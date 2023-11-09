@@ -31,6 +31,21 @@ from .resources import *
 from .oemc_plugin_dialog import OemcStacDialog
 import os.path
 
+# iniital settings for the PYSTAC and STAC_CLIENT
+from pathlib import Path
+import sys 
+sys.path.append(str(Path(__file__).parents[0])+'/lib') # findable lib path
+from pystac_client.client import Client
+
+#importing the QT libs to control ui
+from qgis.core import QgsProject, QgsRasterLayer
+from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtXml import QDomDocument
+from qgis.PyQt.QtWidgets import QListWidget
+# to access the qml files on the fly
+from urllib.request import urlopen
+
+
 
 class OemcStac:
     """QGIS Plugin Implementation."""
@@ -61,11 +76,19 @@ class OemcStac:
 
         # Declare instance attributes
         self.actions = []
-        self.menu = self.tr(u'&Oemc Plugin')
+        self.menu = self.tr(u'&OEMC Plugin')
 
         # Check if plugin was started the first time in current QGIS session
         # Must be set in initGui() to survive plugin reloads
         self.first_start = None
+        # tapping on the project structure to use it
+        self.project_tree = QgsProject.instance().layerTreeRoot()
+        # saving the stac names and catalog urls as a variable
+        self.oemc_stacs = dict(
+            OpenLandMap = "https://s3.eu-central-1.wasabisys.com/stac/openlandmap/catalog.json"
+        )
+        self.strategies = ['Only the selected asset', 'All asset for selected Item(s)', 'Selected Collection']
+        
 
     # noinspection PyMethodMayBeStatic
     def tr(self, message):
@@ -170,15 +193,13 @@ class OemcStac:
         # will be set False in run()
         self.first_start = True
 
-
     def unload(self):
         """Removes the plugin menu item and icon from QGIS GUI."""
         for action in self.actions:
             self.iface.removePluginMenu(
-                self.tr(u'&Oemc Plugin'),
+                self.tr(u'&OEMC Plugin'),
                 action)
             self.iface.removeToolBarIcon(action)
-
 
     def run(self):
         """Run method that performs all the real work"""
@@ -189,12 +210,204 @@ class OemcStac:
             self.first_start = False
             self.dlg = OemcStacDialog()
 
+        # creating some variable to handle the state of the plugin
+        self.catalog = None # this will be setted when combobox is triggered
+        self.selected = dict() # to store the selected elements
+        self.viewed =  dict() # to store the viewed elements
+        # stores the XML structure of the qml file to style the fly w/out downloading
+        self.qml_style = dict() 
+        self.inserted = list()
+
+        # defining settings for the ui elements on the start
+        self.dlg.listCatalog.view().setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.dlg.addStrategy.view().setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.dlg.listItems.setSelectionMode(QListWidget.ExtendedSelection)
+        self.dlg.listAssets.setSelectionMode(QListWidget.ExtendedSelection)
+        # adding the stac names from oemc_stac variable
+        self.dlg.listCatalog.addItems(list(self.oemc_stacs.keys()))
+
+        # functionalities
+        # change on the selection of the catalog will update the 
+        # listCatalog and fills it with the collection names
+        self.dlg.listCatalog.currentIndexChanged.connect(self.update_collections)
+        # based on the selection from collections this will trigered
+        # following the selection this will fills the listItems
+        self.dlg.listCollection.itemClicked.connect(self.update_items)
+        # this will fills the listAssets with unique assets 
+        self.dlg.listItems.itemClicked.connect(self.get_unique_assets)
+        # this will set selected variable for seleceted assets
+        self.dlg.listAssets.itemClicked.connect(self.select_assets)
+        # this will fills the strategies wit predefined add layer strategies
+        self.dlg.addStrategy.addItems(self.strategies)
+        # finally some one is going to push the addLayers button
+        self.dlg.addLayers.clicked.connect(self.add_layers) 
+
+        self.dlg.progressBar.setTextVisible(True)
         # show the dialog
         self.dlg.show()
         # Run the dialog event loop
-        result = self.dlg.exec_()
+        # result = self.dlg.exec_()
         # See if OK was pressed
-        if result:
-            # Do something useful here - delete the line containing pass and
-            # substitute with your code.
-            pass
+        # if result:
+        #     # Do something useful here - delete the line containing pass and
+        #     # substitute with your code.
+        #     pass
+
+
+    def _set_catalog(self,index):
+        self.catalog = Client.open(list(self.oemc_stacs.values())[index])
+    
+
+    def _get_collection_meta(self, index) :
+        '''
+        This method used for to collect the title, id, and qml information
+        for the selected catalog
+        '''
+        meta = dict(
+            titles = [],
+            qmlurls = [],
+            ids = []
+        )
+        for c in self.catalog.get_collections():
+            meta['titles'].append(c.title)
+            meta['ids'].append(c.id)
+            meta['qmlurls'].append(c.to_dict()['qml_url'])
+        self.collection_meta = meta
+    
+
+    def update_collections(self, index):
+        self._set_catalog(index) # setting up the catalog client 
+        self._get_collection_meta(index) # setting the catalog meta
+        self.dlg.listCollection.addItems(
+            self.collection_meta["titles"]
+        )
+        # print(self.collection_meta)
+
+
+    def _get_selected_row(self, ui_element):
+        # ui_element = self.dlg.listCollection
+        sel_index = []
+        for i in ui_element.selectedItems():
+            sel_index.append(
+                ui_element.indexFromItem(i).row()
+            )
+        return sorted(sel_index)
+
+
+    def update_items(self):
+        '''
+        This methods views the items list
+        '''
+        self.dlg.listItems.clear()
+        self.dlg.listAssets.clear()
+        ind  = self._get_selected_row(self.dlg.listCollection)
+        self._update_item_view(ind[0])
+        self.dlg.listItems.addItems(self.viewed['items'])
+
+
+    def _update_item_view(self,index):
+        self.selected['ind'] = index
+        self.selected['collection'] = self.collection_meta['ids'][index]
+        _items = self.catalog.get_collection(
+            self.collection_meta['ids'][index]
+        ).get_items()
+        self.viewed['items'] = [i.id for i in _items] 
+
+
+    def get_unique_assets(self):
+        uniq_assets = []
+        self.update_item()
+        for i in self.selected['items']:
+            my_memo = self.catalog.get_collection(
+                        self.selected['collection']
+            ).get_item(i).to_dict()['assets']
+            for j in my_memo.keys():
+                if not ((j.endswith('view')) or (j.endswith('nail'))):
+                    if j not in uniq_assets:
+                        uniq_assets.append(j)
+        self.viewed['assets'] = uniq_assets
+        self.dlg.listAssets.clear()
+        self.dlg.listAssets.addItems(self.viewed['assets'])
+
+
+    def update_item(self):
+        selected_items = [] 
+        for a in self._get_selected_row(self.dlg.listItems):
+            selected_items.append(
+                self.viewed['items'][a]
+            )
+        self.selected['items'] = selected_items
+
+
+    def select_assets(self):
+        selected_assets = []
+        for i in self._get_selected_row(self.dlg.listAssets):
+            selected_assets.append(
+                self.viewed['assets'][i]
+            )
+        self.selected['assets'] = selected_assets
+        print(self.selected['assets'])
+
+    def get_href(self, collection_id, item_id, asset_id):
+        return '/vsicurl/'+self.catalog.get_collection(collection_id)\
+            .get_item(item_id)\
+            .to_dict()['assets'][asset_id]['href']
+    
+
+    def check_style(self, qml_url, qml_name):
+        if qml_name not in self.qml_style:
+            remote_file = urlopen(qml_url)
+            stylebytes  = remote_file.read()
+            document = QDomDocument()
+            document.setContent(stylebytes)
+            self.qml_style[qml_name] = document
+
+
+    def search_group(self, tree_level, group_name):
+        return tree_level.findGroup(group_name)
+    
+
+    def insert_layer(self, target, raster, asset, name):
+        raster_layer = QgsProject.instance().addMapLayer(
+                            QgsRasterLayer(raster, baseName=asset)
+        )
+        raster_layer.importNamedStyle(self.qml_style[name])
+        QgsProject.instance().addMapLayer(mapLayer=raster_layer, addToLegend=False)
+        temp_position = QgsProject.instance().layerTreeRoot().findLayer(raster_layer.id())
+        target.insertChildNode(-1, temp_position.clone())
+        temp_position.parent().removeChildNode(temp_position)
+
+    def add_layers(self):
+        store = [] 
+        total = len(self.selected['assets']) * len(self.selected['items'])
+        self.dlg.progressBar.setMaximum(total)
+        cnt = 0
+        for asset_id in self.selected['assets']:
+            for item_id in self.selected['items']:
+                qml_url = self.collection_meta['qmlurls'][self.selected['ind']]
+                qml_name = qml_url.split('/')[-1]
+                self.check_style(qml_url, qml_name)
+                
+                r_file = self.get_href(self.selected['collection'], item_id, asset_id)
+                collection_name = self.collection_meta['titles'][self.selected['ind']]
+                target_collection = self.search_group(self.project_tree, collection_name) 
+                if target_collection:
+                    target_item = self.search_group(target_collection, item_id)
+                    if not target_item:
+                        target_collection.addGroup(item_id)
+                        target_item = self.search_group(target_collection, item_id)
+                        self.insert_layer(target_item, r_file, asset_id, qml_name)
+                    cnt += 1 
+                    self.dlg.progressBar.setValue(cnt)
+                else:
+                    print('this part runs')
+                    self.project_tree.addGroup(collection_name)
+                    target_collection = self.search_group(self.project_tree, collection_name)
+                    target_collection.addGroup(item_id)
+                    target_item = self.search_group(target_collection, item_id)
+                    self.insert_layer(target_item, r_file, asset_id, qml_name)
+                    cnt += 1 
+                    self.dlg.progressBar.setValue(cnt)
+                store.append(r_file)
+        self.dlg.progressBar.reset()
+
