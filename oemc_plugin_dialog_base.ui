@@ -43,7 +43,10 @@
         </size>
        </property>
        <property name="value">
-        <number>24</number>
+        <number>0</number>
+       </property>
+       <property name="textVisible">
+        <bool>false</bool>
        </property>
       </widget>
      </item>
@@ -312,7 +315,7 @@
         </widget>
        </item>
        <item>
-        <widget class="QComboBox" name="catalog">
+        <widget class="QComboBox" name="listCatalog">
          <property name="minimumSize">
           <size>
            <width>240</width>
