@@ -222,7 +222,7 @@ class OemcStac:
 
         # defining settings for the ui elements on the start
         self.dlg.listCatalog.view().setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.dlg.addStrategy.view().setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        # self.dlg.addStrategy.view().setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.dlg.listItems.setSelectionMode(QListWidget.ExtendedSelection)
         self.dlg.listAssets.setSelectionMode(QListWidget.ExtendedSelection)
         # adding the stac names from oemc_stac variable
@@ -240,8 +240,9 @@ class OemcStac:
         # this will set selected variable for seleceted assets
         self.dlg.listAssets.itemClicked.connect(self.select_assets)
         # this will fills the strategies wit predefined add layer strategies
-        self.dlg.addStrategy.addItems(self.strategies)
+        # self.dlg.addStrategy.addItems(self.strategies)
         # finally some one is going to push the addLayers button
+
         self.dlg.addLayers.clicked.connect(self.add_layers) 
 
         self.dlg.progressBar.setTextVisible(True)
@@ -298,12 +299,14 @@ class OemcStac:
         '''
         This methods views the items list
         '''
+        self.dlg.addLayers.setEnabled(False)
         self.dlg.listItems.clear()
         self.dlg.listAssets.clear()
         selected_name  = sorted(self.collection_meta['titles'])[self._get_selected_row(self.dlg.listCollection)[0]]
         ind = self.collection_meta['titles'].index(selected_name)
         self._update_item_view(ind)
         self.dlg.listItems.addItems(self.viewed['items'])
+
 
 
     def _update_item_view(self,index):
@@ -316,6 +319,8 @@ class OemcStac:
 
 
     def get_unique_assets(self):
+        self.dlg.addLayers.setEnabled(False)
+
         uniq_assets = []
         self.update_item()
         for i in self.selected['items']:
@@ -347,6 +352,8 @@ class OemcStac:
                 self.viewed['assets'][i]
             )
         self.selected['assets'] = selected_assets
+        self.dlg.addLayers.setEnabled(True)
+        
 
     def get_href(self, collection_id, item_id, asset_id):
         return '/vsicurl/'+self.catalog.get_collection(collection_id)\
