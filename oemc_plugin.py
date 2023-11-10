@@ -34,7 +34,7 @@ import os.path
 # iniital settings for the PYSTAC and STAC_CLIENT
 from pathlib import Path
 import sys 
-sys.path.append(str(Path(__file__).parents[0])+'/lib') # findable lib path
+sys.path.append(str(Path(__file__).parents[0])+'/src') # findable lib path
 from pystac_client.client import Client
 
 #importing the QT libs to control ui
