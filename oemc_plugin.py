@@ -269,13 +269,11 @@ class OemcStac:
         '''
         meta = dict(
             titles = [],
-            # qmlurls = [],
             ids = []
         )
         for c in self.catalog.get_collections():
             meta['titles'].append(c.title)
             meta['ids'].append(c.id)
-            # meta['qmlurls'].append(c.to_dict()['qml_url'])
         self.collection_meta = meta
     
     def update_collections(self, index):
@@ -325,7 +323,6 @@ class OemcStac:
         uniq_assets = []
         self.update_item()
         for i in self.selected['items']:
-            # print(i)
             my_memo = self.catalog.get_collection(
                         self.selected['collection']
             ).get_item(i).to_dict()['assets']
@@ -335,9 +332,7 @@ class OemcStac:
                         uniq_assets.append(j)
                 if (j.endswith('qml')):
                     self.check_style(my_memo['qml']['href'], i)
-                    # self.qml_style[i] = my_memo['qml']['href'] 
 
-                    # print(my_memo['qml']['href'])
         self.viewed['assets'] = uniq_assets
         self.dlg.listAssets.clear()
         self.dlg.listAssets.addItems(self.viewed['assets'])
@@ -410,9 +405,6 @@ class OemcStac:
         cnt = 0
         for asset_id in self.selected['assets']:
             for item_id in self.selected['items']:
-                # qml_url = self.collection_meta['qmlurls'][self.selected['ind']]
-                # qml_name = item_id
-                # self.check_style(qml_url, item_id)
                 
                 r_file = self.get_href(self.selected['collection'], item_id, asset_id)
                 collection_name = self.collection_meta['titles'][self.selected['ind']]
@@ -425,14 +417,12 @@ class OemcStac:
                         if r_file not in self.inserted:
                             self.insert_layer(item_tree, r_file, asset_id, item_id)
                             self.inserted.append(r_file)
-
                     else:
                         collection_tree.addGroup(item_id)
                         item_tree = self.search_group(collection_tree, item_id)
                         self.insert_layer(item_tree, r_file, asset_id, item_id)
                         self.inserted.append(r_file)
 
-                    
                     cnt += 1 
                     self.dlg.progressBar.setValue(cnt)
                 else:
