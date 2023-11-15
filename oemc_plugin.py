@@ -220,13 +220,14 @@ class OemcStac:
             self.qml_style = dict() 
             self.inserted = list()
 
-        # defining settings for the ui elements on the start
-        self.dlg.listCatalog.view().setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        # self.dlg.addStrategy.view().setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.dlg.listItems.setSelectionMode(QListWidget.ExtendedSelection)
-        self.dlg.listAssets.setSelectionMode(QListWidget.ExtendedSelection)
-        # adding the stac names from oemc_stac variable
-        self.dlg.listCatalog.addItems(list(self.oemc_stacs.keys()))
+            # defining settings for the ui elements on the start
+            self.dlg.listCatalog.view().setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            # self.dlg.addStrategy.view().setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self.dlg.listItems.setSelectionMode(QListWidget.ExtendedSelection)
+            self.dlg.listAssets.setSelectionMode(QListWidget.ExtendedSelection)
+            # adding the stac names from oemc_stac variable
+            self.dlg.listCatalog.addItem("") # extra space for visual concerns
+            self.dlg.listCatalog.addItems(list(self.oemc_stacs.keys()))
 
         # functionalities
         # change on the selection of the catalog will update the 
@@ -244,7 +245,7 @@ class OemcStac:
         # finally some one is going to push the addLayers button
 
         self.dlg.addLayers.clicked.connect(self.add_layers) 
-
+        self.dlg.progressBar.reset()
         self.dlg.progressBar.setTextVisible(True)
         # show the dialog
         self.dlg.show()
@@ -278,8 +279,8 @@ class OemcStac:
         self.collection_meta = meta
     
     def update_collections(self, index):
-        self._set_catalog(index) # setting up the catalog client 
-        self._get_collection_meta(index) # setting the catalog meta
+        self._set_catalog(index-1) # setting up the catalog client 
+        self._get_collection_meta(index-1) # setting the catalog meta
         self.dlg.listCollection.addItems(
             sorted(self.collection_meta["titles"])
         )
