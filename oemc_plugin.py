@@ -220,13 +220,14 @@ class OemcStac:
             self.qml_style = dict() 
             self.inserted = list()
 
-        # defining settings for the ui elements on the start
-        self.dlg.listCatalog.view().setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        # self.dlg.addStrategy.view().setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.dlg.listItems.setSelectionMode(QListWidget.ExtendedSelection)
-        self.dlg.listAssets.setSelectionMode(QListWidget.ExtendedSelection)
-        # adding the stac names from oemc_stac variable
-        self.dlg.listCatalog.addItems(list(self.oemc_stacs.keys()))
+            # defining settings for the ui elements on the start
+            self.dlg.listCatalog.view().setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            # self.dlg.addStrategy.view().setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self.dlg.listItems.setSelectionMode(QListWidget.ExtendedSelection)
+            self.dlg.listAssets.setSelectionMode(QListWidget.ExtendedSelection)
+            # adding the stac names from oemc_stac variable
+            self.dlg.listCatalog.addItem("") # extra space for visual concerns
+            self.dlg.listCatalog.addItems(list(self.oemc_stacs.keys()))
 
         # functionalities
         # change on the selection of the catalog will update the 
@@ -244,7 +245,7 @@ class OemcStac:
         # finally some one is going to push the addLayers button
 
         self.dlg.addLayers.clicked.connect(self.add_layers) 
-
+        self.dlg.progressBar.reset()
         self.dlg.progressBar.setTextVisible(True)
         # show the dialog
         self.dlg.show()
@@ -268,18 +269,18 @@ class OemcStac:
         '''
         meta = dict(
             titles = [],
-            qmlurls = [],
+            # qmlurls = [],
             ids = []
         )
         for c in self.catalog.get_collections():
             meta['titles'].append(c.title)
             meta['ids'].append(c.id)
-            meta['qmlurls'].append(c.to_dict()['qml_url'])
+            # meta['qmlurls'].append(c.to_dict()['qml_url'])
         self.collection_meta = meta
     
     def update_collections(self, index):
-        self._set_catalog(index) # setting up the catalog client 
-        self._get_collection_meta(index) # setting the catalog meta
+        self._set_catalog(index-1) # setting up the catalog client 
+        self._get_collection_meta(index-1) # setting the catalog meta
         self.dlg.listCollection.addItems(
             sorted(self.collection_meta["titles"])
         )
@@ -324,13 +325,19 @@ class OemcStac:
         uniq_assets = []
         self.update_item()
         for i in self.selected['items']:
+            # print(i)
             my_memo = self.catalog.get_collection(
                         self.selected['collection']
             ).get_item(i).to_dict()['assets']
             for j in my_memo.keys():
-                if not ((j.endswith('view')) or (j.endswith('nail'))):
+                if not ((j.endswith('view')) or (j.endswith('nail')) or (j.endswith('sld')) or (j.endswith('qml'))):
                     if j not in uniq_assets:
                         uniq_assets.append(j)
+                if (j.endswith('qml')):
+                    self.check_style(my_memo['qml']['href'], i)
+                    # self.qml_style[i] = my_memo['qml']['href'] 
+
+                    # print(my_memo['qml']['href'])
         self.viewed['assets'] = uniq_assets
         self.dlg.listAssets.clear()
         self.dlg.listAssets.addItems(self.viewed['assets'])
@@ -403,9 +410,9 @@ class OemcStac:
         cnt = 0
         for asset_id in self.selected['assets']:
             for item_id in self.selected['items']:
-                qml_url = self.collection_meta['qmlurls'][self.selected['ind']]
-                qml_name = qml_url.split('/')[-1]
-                self.check_style(qml_url, qml_name)
+                # qml_url = self.collection_meta['qmlurls'][self.selected['ind']]
+                # qml_name = item_id
+                # self.check_style(qml_url, item_id)
                 
                 r_file = self.get_href(self.selected['collection'], item_id, asset_id)
                 collection_name = self.collection_meta['titles'][self.selected['ind']]
@@ -416,13 +423,13 @@ class OemcStac:
                     if item_tree:
                         inserted_layers = item_tree.findLayerIds()
                         if r_file not in self.inserted:
-                            self.insert_layer(item_tree, r_file, asset_id, qml_name)
+                            self.insert_layer(item_tree, r_file, asset_id, item_id)
                             self.inserted.append(r_file)
 
                     else:
                         collection_tree.addGroup(item_id)
                         item_tree = self.search_group(collection_tree, item_id)
-                        self.insert_layer(item_tree, r_file, asset_id, qml_name)
+                        self.insert_layer(item_tree, r_file, asset_id, item_id)
                         self.inserted.append(r_file)
 
                     
@@ -433,7 +440,7 @@ class OemcStac:
                     collection_tree = self.search_group(self.project_tree, collection_name)
                     collection_tree.addGroup(item_id)
                     item_tree = self.search_group(collection_tree, item_id)
-                    self.insert_layer(item_tree, r_file, asset_id, qml_name)
+                    self.insert_layer(item_tree, r_file, asset_id, item_id)
                     self.inserted.append(r_file)
                     cnt += 1 
                     self.dlg.progressBar.setValue(cnt)
