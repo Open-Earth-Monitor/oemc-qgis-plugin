@@ -25,7 +25,7 @@
         </size>
        </property>
        <property name="text">
-        <string>OEMC Plugin:</string>
+        <string>OEMC Catalog:</string>
        </property>
       </widget>
      </item>
