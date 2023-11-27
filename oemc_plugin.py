@@ -38,7 +38,7 @@ sys.path.append(str(Path(__file__).parents[0])+'/src') # findable lib path
 from pystac_client.client import Client
 
 #importing the QT libs to control ui
-from qgis.core import QgsProject, QgsRasterLayer, QgsTask, QgsApplication
+from qgis.core import QgsProject, QgsRasterLayer, QgsTask, QgsApplication, QgsMessageLog, Qgis
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtXml import QDomDocument
 from qgis.PyQt.QtWidgets import QListWidget
@@ -50,7 +50,7 @@ from urllib.request import urlopen
 class OemcStac:
     """QGIS Plugin Implementation."""
 
-    def __init__(self, iface):
+    def __init__(self, iface):  
         """Constructor.
 
         :param iface: An interface instance that will be passed to this class
@@ -87,10 +87,9 @@ class OemcStac:
         self.project_tree = QgsProject.instance().layerTreeRoot()
         # saving the stac names and catalog urls as a variable
         self.oemc_stacs = dict(
-            OpenLandMap = "https://s3.eu-central-1.wasabisys.com/stac/openlandmap/catalog.json"
+            OpenLandMap = "https://s3.eu-central-1.wasabisys.com/stac/openlandmap/catalog.json",
+            EcoDataCube = "https://s3.eu-central-1.wasabisys.com/stac/odse/catalog.json"
         )
-        self.strategies = ['Only the selected asset', 'All assets for selected Item(s)', 'Selected Collection']
-        
 
     # noinspection PyMethodMayBeStatic
     def tr(self, message):
@@ -228,6 +227,7 @@ class OemcStac:
             # adding the stac names from oemc_stac variable
             self.dlg.listCatalog.addItem("") # extra space for visual concerns
             self.dlg.listCatalog.addItems(list(self.oemc_stacs.keys()))
+            self.dlg.addLayers.setEnabled(False)
 
         # functionalities
         # change on the selection of the catalog will update the 
@@ -259,10 +259,10 @@ class OemcStac:
 
 
     def _set_catalog(self,index):
+        self.dlg.listCollection.clear()
         self.catalog = Client.open(list(self.oemc_stacs.values())[index])
     
-
-    def _get_collection_meta(self, index) :
+    def _get_collection_meta(self) :
         '''
         This method used for to collect the title, id, and qml information
         for the selected catalog
@@ -278,7 +278,7 @@ class OemcStac:
     
     def update_collections(self, index):
         self._set_catalog(index-1) # setting up the catalog client 
-        self._get_collection_meta(index-1) # setting the catalog meta
+        self._get_collection_meta() # setting the catalog meta
         self.dlg.listCollection.addItems(
             sorted(self.collection_meta["titles"])
         )
@@ -380,7 +380,10 @@ class OemcStac:
         raster_layer = QgsProject.instance().addMapLayer(
                             QgsRasterLayer(raster, baseName=asset)
         )
-        raster_layer.importNamedStyle(self.qml_style[name])
+        try:
+            raster_layer.importNamedStyle(self.qml_style[name])
+        except KeyError:
+            pass
         QgsProject.instance().addMapLayer(mapLayer=raster_layer, addToLegend=False)
         temp_position = QgsProject.instance().layerTreeRoot().findLayer(raster_layer.id())
         target.insertChildNode(-1, temp_position.clone())
