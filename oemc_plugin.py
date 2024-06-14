@@ -262,35 +262,60 @@ class OemcStac:
         #     # substitute with your code.
         #     pass
     
-    def catalog_task_handler(self, index):
+    def catalog_task_handler(self, index:int):
+        """
+        This function manages Catalog information in the UI.
+        This function handles the contents of the collection, items, and assets.
+        index: 
+        """
+        # clearing the UI 
         self.dlg.listCollection.clear()
         self.dlg.listItems.clear()
         self.dlg.listAssets.clear()
+        # disabling the add layer button
         self.dlg.addLayers.setEnabled(False)
-
+        # setting the catalog url
         self.main_url = list(self.oemc_stacs.values())[index-1]
 
-
+        # registering catalog task to run in background
+        # create catalog task
         globals()["access_catalog"] = taskCatalog(self.main_url)
+        # registering
         QgsApplication.taskManager().addTask(globals()["access_catalog"])
+        # handlign with the results
         globals()["access_catalog"].result.connect(self.listing_collection)
         globals()["access_catalog"].catalog.connect(self.handling_catalog)
 
+    # handler function of catalog task
     def handling_catalog(self, catalog_object):
+        # handles catalog
         self._catalog = catalog_object
-
+    
+    # handler of collections
     def listing_collection(self, algo_out):
+        # handles the collection list in UI
         self._collection_meta = algo_out
         self.dlg.listCollection.addItems(sorted(algo_out['title']))
-
+     
     def taskhandler_items(self):
+        """
+        This function manages the lists of Items and Assets
+        The assets count and the naming convetions of them should be consistent
+        regarding the stac specifications. To overcome the possible inconsistency 
+        among them an user control flow had been added.
+        """
+        # clearing the items and assets for the UI
         self.dlg.listItems.clear()
         self.dlg.listAssets.clear()
+        # disabling the addlayer button
         self.dlg.addLayers.setEnabled(False)
+        # registering the task to scheduler
         globals()['select_collection'] = listSelection(self.dlg.listCollection)
         QgsApplication.taskManager().addTask(globals()['select_collection'])
+        # handling with the result of the task
         globals()['select_collection'].result.connect(self.listing_items)
-
+    
+    # task handler function of items
     def listing_items(self, arg):
         ind = self._collection_meta['title'].index(
             sorted(self._collection_meta['title'])[arg[0]]
@@ -300,21 +325,31 @@ class OemcStac:
         globals()["listing_items"] = taskItemListing(ind, self._collection_meta, self._catalog)
         QgsApplication.taskManager().addTask(globals()["listing_items"])
         globals()["listing_items"].result.connect(self.listhandler_items)
-
+    
+    # sending item names to UI
     def listhandler_items(self, namelist):
         self.dlg.listItems.addItems(namelist)
         self._all_items = namelist
 
     def asset_task_handler(self):
+        """
+        this functions creates a task to handle with the assets information
+        """
         self.dlg.listAssets.clear()
+        # disabling the add layer button
         self.dlg.addLayers.setEnabled(False)
+        # generating a task to handle the assets
         globals()['selecting_items'] = listSelection(self.dlg.listItems)
         QgsApplication.taskManager().addTask(globals()['selecting_items'])
+        # handling the task result
         globals()['selecting_items'].result.connect(self.listing_assets)
         globals()['selecting_items'].result.connect(self.handle_styles)
 
-
+    # handles with selected items 
     def listing_assets(self, selectedItems):
+        """
+        this function generates a task to handle with the assets
+        """
         self.dlg.listAssets.clear()
         globals()['listing_assets'] = taskAssetListing(
             self._catalog,
@@ -327,6 +362,10 @@ class OemcStac:
         
 
     def handle_styles(self, selectedItems):
+        """
+        this function generates a task to get the colormap of the assets
+        using a function called handling_colors
+        """
         globals()['resolve_style'] = taskStyleResolver(
             self._catalog,
             self._a_collection,
@@ -337,79 +376,114 @@ class OemcStac:
         globals()['resolve_style'].result.connect(self.handling_colors)
 
     def listhandler_assets(self,givenlist):
+        # asset task result handler. lists the assets in the ui and assign
+        # the value to a in memory object
         self.dlg.listAssets.addItems(givenlist)
         self._all_assets = givenlist
 
     def handling_colors(self, given_cc):
+        # asssing the the color schema to local object
         self._colors = given_cc
 
+    # enabling the addLayers button
     def selecting_assets(self):
         self.dlg.addLayers.setEnabled(True)
 
     
     def add_layers_in_parallel(self):
+        # implementation of registering the cloud optimized geotiffs to QGIS
+
         def get_selected_asset(passedArg):
+            # getter for selected asset in the UI
             self._query_keys['assets'] = [self._all_assets[i] for i in passedArg]
 
         def get_selected_items(passedArg):
+            # getter for the selected items
             self._query_keys["items"] =  [self._all_items[i] for i in passedArg]
 
+            # settings for the progress bar 
             total_len = len(self._query_keys['assets']) * len(self._query_keys['items'])
             self.dlg.progressBar.setMaximum(total_len)
-
+            
+            # calling the registry function 
             call_parallel_implementation()
-
+            # resseting the progress bar
             self.dlg.progressBar.reset()
 
-
+        # generating the list selection task from listSelection object for assets
         globals()['asset_selection'] = listSelection(self.dlg.listAssets)
         QgsApplication.taskManager().addTask(globals()['asset_selection'])
+        # handling with the selection task of assets
         globals()['asset_selection'].result.connect(get_selected_asset)
-
+        
+        # generating the  item selection task with listSelection object
         globals()['item_selection'] = listSelection(self.dlg.listItems)
         QgsApplication.taskManager().addTask(globals()['item_selection'])
         globals()['item_selection'].result.connect(get_selected_items)
 
+        # implementation of the registry of COGs with QRunnable
         def call_parallel_implementation():
+            # count of the total assets that selected
             total_count = len(self._query_keys['assets']) * len(self._query_keys['items'])
             count = 0
+            # setting max value of the progress bar 
             self.dlg.progressBar.setMaximum(total_count)
-            print(total_count)
+            """
+            Logic below perfoms a check to the layerTreeRoot to see a group called `col_name`
+                if the collection name exists 
+                    it will perform another search for the items
+                    if the item is exist it will hash the raster name to a list and registers it to QGIS
+                    if the item is not exist in the hash it will hast it and insert a item tree in the layerTreeRoot 
+
+            """
             for asset in self._query_keys['assets']:
                 for pos_item, item in enumerate(self._query_keys['items']):
+                    # getting the collection by using title
                     col_name = self._catalog.get_collection(self._a_collection).title
+                    # looking for exist or not in the layerTreeRoot
                     col_tree = QgsProject.instance().layerTreeRoot().findGroup(col_name)
-                    if col_tree:
+                    if col_tree: 
                         item_tree = col_tree.findGroup(item)
                         
                         if item_tree:
                             if asset not in self._inserted[self._a_collection][item]:
+                                # hash the item to a list and ship to the thread
                                 self._inserted[self._a_collection][item].append(asset)
                                 runnable = addRasterParalel(asset, item, self._a_collection,self._catalog, item_tree, self._colors.get(self._a_collection))
                                 self.thread_pool.start(runnable)
                         else:
+                            # create the item in the layerTreeRoot and ship to a thread to register 
                             item_tree = col_tree.addGroup(item)
                             self._inserted[self._a_collection][item] = [asset]
-                            
+
                             runnable = addRasterParalel(asset, item, self._a_collection,self._catalog, item_tree, self._colors.get(self._a_collection))
                             self.thread_pool.start(runnable)
+                        # increase the count of the progress bar
                         count += 1
                         self.dlg.progressBar.setValue(count)
                     else:
+                        # create the collection in the layerTreeRoot
                         col_tree = QgsProject.instance().layerTreeRoot().addGroup(col_name)
                         item_tree = col_tree.addGroup(item)
+                        # generate the hash list and insert the element
                         self._inserted[self._a_collection] = dict()
                         self._inserted[self._a_collection][item] = [asset]
-                        
+                        # ship it to the thread
                         runnable = addRasterParalel(asset, item, self._a_collection,self._catalog, item_tree, self._colors.get(self._a_collection))
                         self.thread_pool.start(runnable)
+                        # set the progressbar
                         count += 1
                         self.dlg.progressBar.setValue(count)
                     
-                    
+                    #collapse the item group to prevent the performance issue
                     item_tree.setExpanded(False)
                     if pos_item != 0:
+                        # toggle of the inserted the item to not overload the QGIS 
+                        # in default of it will try to load the layer making range request 
+                        # to source of cloud native geotiff files to prevent the overload 
+                        # the visibility of the layer except the first one should be setted to False
                         item_tree.setItemVisibilityChecked(False)
+            # collapse the collection group
             col_tree.setExpanded(False)
 
 class taskCatalog(QgsTask):
