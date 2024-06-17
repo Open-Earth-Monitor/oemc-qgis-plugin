@@ -486,6 +486,7 @@ class OemcStac:
             # collapse the collection group
             col_tree.setExpanded(False)
 
+# class to handle with the title and the index of the collection in catalog with threads
 class taskCatalog(QgsTask):
     result = pyqtSignal(dict)
     catalog = pyqtSignal(object)
@@ -511,6 +512,7 @@ class taskCatalog(QgsTask):
     def cancel(self):
         super().cancel()
 
+# to handle the selections in threads with lists in the UI of the plugin 
 class listSelection(QgsTask):
     result = pyqtSignal(list)
 
@@ -530,6 +532,7 @@ class listSelection(QgsTask):
 
     def cancel(self): super().cancel()
 
+# to handle the selection in the items list in threads
 class taskItemListing(QgsTask):
     result = pyqtSignal(list)
     def __init__(self, index, collection_meta, catalog):
@@ -550,6 +553,7 @@ class taskItemListing(QgsTask):
     def cancel(self):
         super().cancel()
 
+# class to handle the assets from the catalog in threads
 class taskAssetListing(QgsTask):
     result = pyqtSignal(list)
     def __init__(self, catalog, collectionid, item_id, selecteditems):
@@ -577,6 +581,7 @@ class taskAssetListing(QgsTask):
 
     def cancel(self): super().cancel()
 
+# task to handle the with the QML files in the catalog with threads
 class taskStyleResolver(QgsTask):
     result = pyqtSignal(dict)
     def __init__(self, catalog, collectionid, item_id, selecteditems):
@@ -610,6 +615,7 @@ class taskStyleResolver(QgsTask):
 
     def cancel(self): super().cancel()
 
+# class to add the multiple raster with threads. 
 class addRasterParalel(QRunnable):
     result = pyqtSignal()
     def __init__(self, asset_id, item_id, collection_id, catalog_object, place, colors):
