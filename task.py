@@ -1,10 +1,11 @@
 from pystac_client.client import Client
 from urllib.request import urlopen
 
-from qgis.PyQt.QtCore import Qt, pyqtSignal
+from qgis.PyQt.QtCore import pyqtSignal, QRunnable
 from qgis.PyQt.QtXml import QDomDocument
 from qgis.core import QgsTask
 
+from qgis.core import QgsProject, QgsRasterLayer
 
 
 class CatalogTask(QgsTask):
@@ -137,3 +138,29 @@ class StyleTask(QgsTask):
     def finished(self, result: bool):
         if result: 
             self.result.emit(self.colorcodes)
+
+#class to add raster by using thread pool
+class registerRastersToServer(QRunnable):
+    result = pyqtSignal()
+
+    def __init__(self, id_asset, id_item, id_collection, object_catalog, place, colorschema):
+        super().__init__()
+        self.id_asset = id_asset
+        self.id_item = id_item
+        self.id_collection = id_collection
+        self.object_catalog = object_catalog
+        self.place = place
+        self.colorschema = colorschema
+
+    def run(self): 
+        file_adress = '/vsicurl/' + self.object_catalog.get_collection(self.id_collection).get_item(self.id_item).to_dict()['assets'][self.id_asset]['href']
+        raster_layer = QgsRasterLayer(file_adress, baseName=self.id_asset)
+
+        if self.colorschema:
+            raster_layer.importNamedStyle(self.colorschema)
+        QgsProject.instance().addMapLayer(mapLayer=raster_layer, addToLegend=False)
+        self.place.addLayer(raster_layer)
+
+    def finished(self,result): 
+        if result:
+            self.result.emit()
