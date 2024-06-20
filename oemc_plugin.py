@@ -30,6 +30,7 @@ from .resources import *
 # Import the code for the dialog
 from .oemc_plugin_dialog import OemcStacDialog
 import os.path
+import os
 
 # iniital settings for the PYSTAC and STAC_CLIENT
 from pathlib import Path
@@ -38,6 +39,7 @@ sys.path.append(str(Path(__file__).parents[0])+'/src') # findable lib path
 from pystac_client.client import Client
 
 from .task import CatalogTask, ListSelectionTask, ItemTask, AssetTask, StyleTask, registerRastersToServer
+from .cache import Database
 
 #importing the QT libs to control ui
 from qgis.core import QgsProject, QgsRasterLayer, QgsTask, QgsApplication
@@ -264,7 +266,16 @@ class OemcStac:
         #     # Do something useful here - delete the line containing pass and
         #     # substitute with your code.
         #     pass
-    
+    def _clear_ui(self, params:list) -> None:
+        if ('all' in params ) or ('item' in params):
+            self.dlg.listItems.clear()
+        
+        if ('all' in params ) or ('asset' in params):
+            self.dlg.listAssets.clear()
+        
+        if ('all' in params ) or ('collection' in params):
+            self.dlg.listCollection.clear()
+        
     def catalog_task_handler(self, index:int):
         """
         This function manages Catalog information in the UI.
@@ -272,13 +283,14 @@ class OemcStac:
         index: 
         """
         # clearing the UI 
-        self.dlg.listCollection.clear()
-        self.dlg.listItems.clear()
-        self.dlg.listAssets.clear()
+        self._clear_ui(['all'])
         # disabling the add layer button
         self.dlg.addLayers.setEnabled(False)
         # setting the catalog url
         self.main_url = list(self.oemc_stacs.values())[index-1]
+        
+        #self.database = Database(list(self.oemc_stacs.keys())[index-1])
+        #print('db connection is established')
 
         # registering catalog task to run in background
         # create catalog task
@@ -286,7 +298,7 @@ class OemcStac:
         # registering
         self.task_manager.addTask(access_catalog)
        
-        # handlign with the results
+        # handling with the results
         access_catalog.result.connect(self.listing_collection)
         access_catalog.catalogSignal.connect(self.handling_catalog)
 
@@ -311,8 +323,8 @@ class OemcStac:
         among them an user control flow had been added.
         """
         # clearing the items and assets for the UI
-        self.dlg.listItems.clear()
-        self.dlg.listAssets.clear()
+        self._clear_ui(['item','asset'])
+        
         # disabling the addlayer button
         self.dlg.addLayers.setEnabled(False)
         # registering the task to scheduler
@@ -342,7 +354,7 @@ class OemcStac:
         """
         this functions creates a task to handle with the assets information
         """
-        self.dlg.listAssets.clear()
+        self._clear_ui(['asset'])
         # disabling the add layer button
         self.dlg.addLayers.setEnabled(False)
         # generating a task to handle the assets
@@ -358,7 +370,7 @@ class OemcStac:
         """
         this function generates a task to handle with the assets
         """
-        self.dlg.listAssets.clear()
+        self._clear_ui(['asset'])
         listing_assets = AssetTask(
             self._catalog,
             self._a_collection,
