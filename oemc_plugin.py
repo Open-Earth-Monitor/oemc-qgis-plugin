@@ -32,7 +32,7 @@ from .oemc_plugin_dialog import OemcStacDialog
 import os.path
 import os
 
-# iniital settings for the PYSTAC and STAC_CLIENT
+# inital settings for the PYSTAC and STAC_CLIENT
 from pathlib import Path
 import sys
 sys.path.append(str(Path(__file__).parents[0])+'/src') # findable lib path
@@ -289,8 +289,7 @@ class OemcStac:
         # setting the catalog url
         self.main_url = list(self.oemc_stacs.values())[index-1]
         
-        #self.database = Database(list(self.oemc_stacs.keys())[index-1])
-        #print('db connection is established')
+        self.database = Database(list(self.oemc_stacs.keys())[index-1])
 
         # registering catalog task to run in background
         # create catalog task
@@ -311,9 +310,15 @@ class OemcStac:
     
     # handler of collections
     def listing_collection(self, algo_out):
+        """
+        the input in the form of a dict with keys title id and desciption
+        """
         # handles the collection list in UI
         self._collection_meta = algo_out
         self.dlg.listCollection.addItems(sorted(algo_out['title']))
+        """db submission for collection"""
+        for id, title, description in zip(algo_out['index'], algo_out['title'], algo_out['description']):
+            self.database.insert_collection(id, title, description)
      
     def taskhandler_items(self):
         """
@@ -330,6 +335,7 @@ class OemcStac:
         # registering the task to scheduler
 
         select_collection = ListSelectionTask(self.dlg.listCollection)
+        
         self.task_manager.addTask(select_collection)
         select_collection.result.connect(self.listing_items)
         
@@ -339,16 +345,25 @@ class OemcStac:
             sorted(self._collection_meta['title'])[arg[0]]
         )
         self._a_collection = self._collection_meta['index'][ind]
+        #self._a_collection is a collection id
 
         listing_items = ItemTask(ind, self._collection_meta, self._catalog)
         self.task_manager.addTask(listing_items)
         listing_items.result.connect(self.listhandler_items)
-
         
+        
+        # self.database.insert_items(self._all_items, self._a_collection)
+        
+    
     # sending item names to UI
-    def listhandler_items(self, namelist):
-        self.dlg.listItems.addItems(namelist)
-        self._all_items = namelist
+    def listhandler_items(self, id_list):
+        self.dlg.listItems.addItems(id_list)
+        self._all_items = id_list # list of the items
+        
+        # submission to db
+        print("submisson")
+        self.database.insert_items(self._all_items, self._a_collection)
+
 
     def asset_task_handler(self):
         """
@@ -379,9 +394,12 @@ class OemcStac:
         )
         self.task_manager.addTask(listing_assets)
         listing_assets.result.connect(self.listhandler_assets)
-
+        listing_assets.assetUrls.connect(self.test_me)
         
-
+    def test_me(self, something):
+        print('something '*10)
+        print(something)
+        
     def handle_styles(self, selectedItems):
         """
         this function generates a task to get the colormap of the assets
@@ -391,18 +409,35 @@ class OemcStac:
         style_resolver = StyleTask(self._catalog, self._a_collection, self._all_items, selectedItems)
         self.task_manager.addTask(style_resolver)
         style_resolver.result.connect(self.handling_colors)
+        style_resolver.styleContainer.connect(self.handle_style_files)
 
         
     def listhandler_assets(self,givenlist):
         # asset task result handler. lists the assets in the ui and assign
         # the value to a in memory object
+        print("givenlist")
+        print(givenlist)
+        print("givenlist")
         self.dlg.listAssets.addItems(givenlist)
         self._all_assets = givenlist
+
+        # print(50*'*')
+        # print(self._all_items)
+        print(50*'*')
+        print(givenlist)
+        print(50*'*')
 
     def handling_colors(self, given_cc):
         # asssing the the color schema to local object
         self._colors = given_cc
 
+    def handle_style_files(self, styleFiles):
+        print(50*"@")
+        print(self._all_items)
+        print(self._all_assets)
+        print(styleFiles)
+        print(50*"@")
+        
     # enabling the addLayers button
     def selecting_assets(self):
         self.dlg.addLayers.setEnabled(True)
@@ -439,8 +474,6 @@ class OemcStac:
 
         # implementation of the registry of COGs with QRunnable
         def call_parallel_implementation():
-            print(self._colors)
-            print('#'*20)
             # count of the total assets that selected
             total_count = len(self._query_keys['assets']) * len(self._query_keys['items'])
             count = 0
