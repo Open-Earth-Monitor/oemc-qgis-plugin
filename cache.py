@@ -24,7 +24,6 @@ class Database:
         
         if not os.path.isdir(f'{plugin_dir}/db'):
             os.mkdir(f'{plugin_dir}/db')
-            print("directory called db is created")
         db_path = f"{plugin_dir}/db/{catalog_name}.db"
         
         # check if exist folder called `catalog_name`
@@ -37,12 +36,13 @@ class Database:
 
         return connection
 
-
+    # creation of the tables
     def _create_db(self, connection):
-        self.cursor.execute("CREATE TABLE catalog(id, title, description)")
-        self.cursor.execute("CREATE TABLE collection(id, title, description, sld, qml)")
-        self.cursor.execute("CREATE TABLE item(id, collection_id)")
-        self.cursor.execute("CREATE TABLE asset(id, item_id, href)")        
+        self.cursor = connection.cursor()
+        self.cursor.execute("CREATE TABLE catalog(id INTEGER PRIMARY KEY, objectId UNIQUE, title TEXT, description TEXT)")
+        self.cursor.execute("CREATE TABLE collection(id INTEGER PRIMARY KEY,objectId UNIQUE, title TEXT, description TEXT)") # , sld, qml
+        self.cursor.execute("CREATE TABLE item(id INTEGER PRIMARY KEY, objectId UNIQUE, collection_objectId TEXT)")
+        self.cursor.execute("CREATE TABLE asset(id INTEGER PRIMARY KEY,objectId UNIQUE, item_objectId TEXT, href TEXT, qml TEXT)")        
     
     # single event selection case.
     def insert_catalog(self, id, title, description):
@@ -51,8 +51,9 @@ class Database:
 
     # Single entry event. The user only allowed to select a collection from the UI
     # when the selection is performed on the UI following function needed to be called. 
-    def insert_collection(self, id, title, description, sld, qml):
-        self.cursor.execute(f"INSET INTO collection VALUES ({id},{title},{description},{sld},{qml})")
+    def insert_collection(self, index, title, description):
+        self.cursor.execute("INSERT OR IGNORE INTO collection (objectId, title, description) VALUES (?, ?, ?)",
+                            (index, title, description))
         self.connection.commit()
 
     # The user allowed to select multiple items which needed to be submit into db 
@@ -60,12 +61,19 @@ class Database:
         # multiple id for item
         # single id for collection_id
         data = [(id, collection_id) for id in ids]
-        self.cursor.executemany("INSERT INTO item VALUES(?,?)", data)
+        print(data)
+        self.cursor.executemany("INSERT OR IGNORE INTO item (objectId, collection_objectId) VALUES(?,?)", data)
         self.connection.commit()
 
     def insert_assets(self, ids, item_id, hrefs):
         # multiple id for assets
         # single id for the items that assets belong to
-        data = [(id, item_id ,href) for id, href in zip(ids, hrefs)]
-        self.cursor.executemany("INSERT INTO asset VALUES(?,?,?)", data)
+        data = [(id, item_id, href) for id, href in zip(ids, hrefs)]
+        self.cursor.executemany("INSERT OR IGNORE INTO asset VALUES(?,?,?)", data)
         self.connection.commit()
+        # self.connection.close()
+
+    def get_collection_by_title(self, title):
+        objectId = self.cursor.execute("SELECT objectId FROM collection WHERE title LIKE ?", ("%"+title+"%",)).fetchone()[0]
+        return objectId
+    

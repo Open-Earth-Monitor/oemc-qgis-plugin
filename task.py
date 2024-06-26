@@ -10,8 +10,12 @@ from qgis.core import QgsProject, QgsRasterLayer
 
 class CatalogTask(QgsTask):
     """
-    This class is created to handle the titles of the collecitons 
+    This class is created to handle the titles of the collections 
     on the selected catalog.
+    
+    The result returns a dict that is composed of title descriptin and id of the collections
+    inside of the catalog
+    catalogSignal returns a stac client object
     """
     catalogSignal = pyqtSignal(object)
     result = pyqtSignal(dict)
@@ -23,18 +27,19 @@ class CatalogTask(QgsTask):
         self.url = url
         self.title = []
         self.index = []
+        self.desc = []
     
     def run(self) -> bool:
         self.catalog = Client.open(self.url)
         for collection in self.catalog.get_collections():
             self.title.append(collection.title)
             self.index.append(collection.id)
+            self.desc.append(collection.description)
         return True
 
     def finished(self, result: bool) -> None:
         if result:
-            self.result.emit(dict(title=self.title, index=self.index))
-            print('Result has been sent')
+            self.result.emit(dict(title=self.title, index=self.index, description=self.desc))
             self.catalogSignal.emit(self.catalog)
 
 # class to handle selections in the UI lists
@@ -65,7 +70,7 @@ class ItemTask(QgsTask):
         self.meta_collection = meta_collection
         self.meta_catalog = meta_catalog
         self.items = None
-    
+
     def run(self) -> bool:
         _items = self.meta_catalog.get_collection(
             self.meta_collection['index'][self.index]
@@ -81,7 +86,7 @@ class ItemTask(QgsTask):
 # to handle the assets in the selected catalog
 class AssetTask(QgsTask):
     result = pyqtSignal(list)
-
+    assetUrls = pyqtSignal(dict)
     def __init__(self,catalog, id_collection, id_item, selected_items) -> None:
         super().__init__("accessing the assets", QgsTask.CanCancel)
 
@@ -101,16 +106,18 @@ class AssetTask(QgsTask):
                 if not ((memory.endswith('view')) or (memory.endswith('nail')) or (memory.endswith("sld")) or (memory.endswith("qml"))):
                     if memory not in self.unique:
                         self.unique.append(memory)
+                        
         return True
     
     def finished(self, result: bool) -> None:
         if result:
             self.result.emit(self.unique)
+            self.assetUrls.emit(self.colorcodes)
 
 #class to handle with the QML files in the catalog with threads
 class StyleTask(QgsTask):
     result = pyqtSignal(dict)
-
+    styleContainer = pyqtSignal(list)
     def __init__(self, catalog, id_collection, id_item, selected_items) -> None:
         super().__init__("resolving styles", QgsTask.CanCancel)
         self.catalog = catalog
@@ -119,6 +126,7 @@ class StyleTask(QgsTask):
         self.selected_items= selected_items
         self.unique = []
         self.colorcodes = dict()
+        self.styles = []
     
     def run(self):
         for item in self.selected_items:
@@ -127,6 +135,7 @@ class StyleTask(QgsTask):
             for asset in assets.keys():
                 if asset.endswith('qml'):
                     style_url = assets['qml']['href']
+                    if style_url not in self.styles: self.styles.append(style_url)
                     if self.id_collection not in self.colorcodes.keys():
                         style_file = urlopen(style_url)
                         stylebytes = style_file.read()
@@ -138,6 +147,7 @@ class StyleTask(QgsTask):
     def finished(self, result: bool):
         if result: 
             self.result.emit(self.colorcodes)
+            self.styleContainer.emit(self.styles)
 
 #class to add raster by using thread pool
 class registerRastersToServer(QRunnable):
