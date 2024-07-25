@@ -78,8 +78,24 @@ class Database:
     def get_collection_by_title(self, title):
         objectId = self.cursor.execute("SELECT objectId FROM collection WHERE title LIKE ?", ("%"+title+"%",)).fetchone()[0]
         return objectId
+
+    def get_all_collection_names(self):
+        return [i[0] for i in self.cursor.execute("SELECT title FROM collection").fetchall()]
+    
+    def get_all_collection_objectId(self):
+        return [i[0] for i in self.cursor.execute("SELECT objectId FROM collection").fetchall()]
     
     #for search functionality
     def get_collection_by_keyword(self, keyword):
         title_list = [i[0] for i in self.cursor.execute("SELECT title FROM collection WHERE title LIKE ?",("%"+keyword+"%",)).fetchall()]
         return title_list
+
+    # def get_collection(self, collection_id=None, title=None):
+    #     if (collection_id is None) and (title is None):
+    #         print("Either collection_id or title should be provided")
+    #         raise ValueError 
+    #     if title:
+    #         self.get_collection_by_title(title)
+        
+    #     self.cursor.execute("SELECT title FROM collection WHERE objectId LIKE ?", ("%"+collection_id+"%",))
+        
