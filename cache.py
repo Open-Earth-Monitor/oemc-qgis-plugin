@@ -19,6 +19,7 @@ class Database:
         pass
 
     def _get_connection(self, catalog_name) -> tuple:
+        print("establishing a db connection ...")
         # check is there is a file called `db`
         plugin_dir = os.path.dirname(__file__)
         
@@ -39,15 +40,16 @@ class Database:
     # creation of the tables
     def _create_db(self, connection):
         self.cursor = connection.cursor()
-        self.cursor.execute("CREATE TABLE catalog(id INTEGER PRIMARY KEY, objectId UNIQUE, title TEXT, description TEXT)")
+        # self.cursor.execute("CREATE TABLE catalog(id INTEGER PRIMARY KEY, objectId UNIQUE, title TEXT, description TEXT)")
         self.cursor.execute("CREATE TABLE collection(id INTEGER PRIMARY KEY,objectId UNIQUE, title TEXT, description TEXT)") # , sld, qml
         self.cursor.execute("CREATE TABLE item(id INTEGER PRIMARY KEY, objectId UNIQUE, collection_objectId TEXT)")
         self.cursor.execute("CREATE TABLE asset(id INTEGER PRIMARY KEY,objectId UNIQUE, item_objectId TEXT, href TEXT, qml TEXT)")        
     
     # single event selection case.
-    def insert_catalog(self, id, title, description):
-        self.cursor.execute(f"INSERT INTO catalog VALUES ({id},{title},{description})")
-        self.connection.commit()
+    # def insert_catalog(self, id, title, description):
+    #     print("insertion in progress for the catalog named :", title)
+    #     self.cursor.execute(f"INSERT INTO catalog VALUES ({id},{title},{description})")
+    #     self.connection.commit()
 
     # Single entry event. The user only allowed to select a collection from the UI
     # when the selection is performed on the UI following function needed to be called. 
@@ -61,7 +63,7 @@ class Database:
         # multiple id for item
         # single id for collection_id
         data = [(id, collection_id) for id in ids]
-        print(data)
+        # print(data)
         self.cursor.executemany("INSERT OR IGNORE INTO item (objectId, collection_objectId) VALUES(?,?)", data)
         self.connection.commit()
 
@@ -77,3 +79,7 @@ class Database:
         objectId = self.cursor.execute("SELECT objectId FROM collection WHERE title LIKE ?", ("%"+title+"%",)).fetchone()[0]
         return objectId
     
+    #for search functionality
+    def get_collection_by_keyword(self, keyword):
+        title_list = [i[0] for i in self.cursor.execute("SELECT title FROM collection WHERE title LIKE ?",("%"+keyword+"%",)).fetchall()]
+        return title_list

@@ -276,6 +276,9 @@ class OemcStac:
         if ('all' in params ) or ('collection' in params):
             self.dlg.listCollection.clear()
         
+    def _block_button(self):
+        self.dlg.addLayers.setEnabled(False)
+
     def catalog_task_handler(self, index:int):
         """
         This function manages Catalog information in the UI.
@@ -285,7 +288,7 @@ class OemcStac:
         # clearing the UI 
         self._clear_ui(['all'])
         # disabling the add layer button
-        self.dlg.addLayers.setEnabled(False)
+        self._block_button()
         # setting the catalog url
         self.main_url = list(self.oemc_stacs.values())[index-1]
         
@@ -331,7 +334,7 @@ class OemcStac:
         self._clear_ui(['item','asset'])
         
         # disabling the addlayer button
-        self.dlg.addLayers.setEnabled(False)
+        self._block_button()
         # registering the task to scheduler
 
         select_collection = ListSelectionTask(self.dlg.listCollection)
@@ -343,8 +346,7 @@ class OemcStac:
     def listing_items(self, arg):
         ind = self._collection_meta['title'].index(
             sorted(self._collection_meta['title'])[arg[0]]
-        )
-        self._a_collection = self._collection_meta['index'][ind]
+        )        self._a_collection = self._collection_meta['index'][ind]
         #self._a_collection is a collection id
 
         listing_items = ItemTask(ind, self._collection_meta, self._catalog)
@@ -399,7 +401,7 @@ class OemcStac:
     def test_me(self, something):
         print('something '*10)
         print(something)
-        
+
     def handle_styles(self, selectedItems):
         """
         this function generates a task to get the colormap of the assets
