@@ -41,7 +41,7 @@ class Database:
     def _create_db(self, connection):
         self.cursor = connection.cursor()
         # self.cursor.execute("CREATE TABLE catalog(id INTEGER PRIMARY KEY, objectId UNIQUE, title TEXT, description TEXT)")
-        self.cursor.execute("CREATE TABLE collection(id INTEGER PRIMARY KEY,objectId UNIQUE, title TEXT, description TEXT)") # , sld, qml
+        self.cursor.execute("CREATE TABLE collection(id INTEGER PRIMARY KEY,objectId UNIQUE, title TEXT)") # , description TEXT
         self.cursor.execute("CREATE TABLE item(id INTEGER PRIMARY KEY, objectId UNIQUE, collection_objectId TEXT)")
         self.cursor.execute("CREATE TABLE asset(id INTEGER PRIMARY KEY,objectId UNIQUE, item_objectId TEXT, href TEXT, qml TEXT)")        
     
@@ -53,9 +53,9 @@ class Database:
 
     # Single entry event. The user only allowed to select a collection from the UI
     # when the selection is performed on the UI following function needed to be called. 
-    def insert_collection(self, index, title, description):
-        self.cursor.execute("INSERT OR IGNORE INTO collection (objectId, title, description) VALUES (?, ?, ?)",
-                            (index, title, description))
+    def insert_collection(self, index, title): # description
+        self.cursor.execute("INSERT OR IGNORE INTO collection (objectId, title) VALUES (?, ?)",
+                            (index, title))
         self.connection.commit()
 
     # The user allowed to select multiple items which needed to be submit into db 

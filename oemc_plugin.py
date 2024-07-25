@@ -320,8 +320,8 @@ class OemcStac:
         self._collection_meta = algo_out
         self.dlg.listCollection.addItems(sorted(algo_out['title']))
         """db submission for collection"""
-        for id, title, description in zip(algo_out['index'], algo_out['title'], algo_out['description']):
-            self.database.insert_collection(id, title, description)
+        for id, title in zip(algo_out['index'], algo_out['title']): # , algo_out['description']
+            self.database.insert_collection(id, title) # , description
      
     def taskhandler_items(self):
         """
@@ -346,7 +346,8 @@ class OemcStac:
     def listing_items(self, arg):
         ind = self._collection_meta['title'].index(
             sorted(self._collection_meta['title'])[arg[0]]
-        )        self._a_collection = self._collection_meta['index'][ind]
+        )
+        self._a_collection = self._collection_meta['index'][ind]
         #self._a_collection is a collection id
 
         listing_items = ItemTask(ind, self._collection_meta, self._catalog)

@@ -31,15 +31,15 @@ class CatalogTask(QgsTask):
     
     def run(self) -> bool:
         self.catalog = Client.open(self.url)
-        for collection in self.catalog.get_collections():
-            self.title.append(collection.title)
-            self.index.append(collection.id)
-            self.desc.append(collection.description)
+        for i in self.catalog.links:
+            if i.rel == 'child':
+                self.index.append(i.target.split('/')[1])
+                self.title.append(i.title)
         return True
 
     def finished(self, result: bool) -> None:
         if result:
-            self.result.emit(dict(title=self.title, index=self.index, description=self.desc))
+            self.result.emit(dict(title=self.title, index=self.index)) # , description=self.desc
             self.catalogSignal.emit(self.catalog)
 
 # class to handle selections in the UI lists
