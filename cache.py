@@ -99,3 +99,16 @@ class Database:
         
     #     self.cursor.execute("SELECT title FROM collection WHERE objectId LIKE ?", ("%"+collection_id+"%",))
         
+    def flush_collection(self):
+        self.cursor.execute("DELETE FROM collection")
+
+    def flush_item(self):
+        self.cursor.execute("DELETE FROM item")
+
+    def flush_asset(self):
+        self.cursor.execute("DELETE FROM asset")
+
+    def flush_all(self):
+        self.flush_collection()
+        self.flush_item()
+        self.flush_asset()
