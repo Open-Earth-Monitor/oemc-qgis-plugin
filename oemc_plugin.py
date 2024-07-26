@@ -282,8 +282,6 @@ class OemcStac:
     def catalog_task_handler(self, index:int):
         """
         This function manages Catalog information in the UI.
-        This function handles the contents of the collection, items, and assets.
-        index: 
         """
         # clearing the UI 
         self._clear_ui(['all'])
@@ -293,7 +291,11 @@ class OemcStac:
         self.main_url = list(self.oemc_stacs.values())[index-1]
         
         self.database = Database(list(self.oemc_stacs.keys())[index-1])
-
+        collection_names = sorted(self.database.get_all_collection_names())
+        if collection_names != []: # if cache exist render it
+            print("cache exist")
+            self.dlg.listCollection.addItems(collection_names)
+            
         # registering catalog task to run in background
         # create catalog task
         access_catalog = CatalogTask(self.main_url)
@@ -317,11 +319,18 @@ class OemcStac:
         the input in the form of a dict with keys title id and desciption
         """
         # handles the collection list in UI
+        titles_request = sorted(algo_out['title'])
+        titles_cache = sorted(self.database.get_all_collection_names())
+
         self._collection_meta = algo_out
-        self.dlg.listCollection.addItems(sorted(algo_out['title']))
-        """db submission for collection"""
-        for id, title in zip(algo_out['index'], algo_out['title']): # , algo_out['description']
-            self.database.insert_collection(id, title) # , description
+        if titles_request != titles_cache:
+            print("no cache or inconsistent cache")
+            self._clear_ui(['all']) # clear ui
+            self.database.flush_all()
+            self.dlg.listCollection.addItems(titles_request)
+            """db submission for collection"""
+            for id, title in zip(algo_out['index'], algo_out['title']): # , algo_out['description']
+                self.database.insert_collection(id, title) # , description
      
     def taskhandler_items(self):
         """
@@ -352,6 +361,7 @@ class OemcStac:
 
         listing_items = ItemTask(ind, self._collection_meta, self._catalog)
         self.task_manager.addTask(listing_items)
+        
         listing_items.result.connect(self.listhandler_items)
         
         
