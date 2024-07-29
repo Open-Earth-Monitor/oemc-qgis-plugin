@@ -90,6 +90,12 @@ class Database:
         title_list = [i[0] for i in self.cursor.execute("SELECT title FROM collection WHERE title LIKE ?",("%"+keyword+"%",)).fetchall()]
         return title_list
 
+    def get_item_by_collection_id(self, collection_id):
+        return [i[0] for i in self.cursor.execute("SELECT objectId FROM item WHERE collection_objectId LIKE ?",("%"+collection_id+"%",)).fetchall()]
+    
+    def get_asset_by_item_id(self, item_id):
+        return self.cursor.execute("SELECT objectId FROM asset item_objectId LIKE ?", ("%"+item_id+"%",)).fetchall()
+
     # def get_collection(self, collection_id=None, title=None):
     #     if (collection_id is None) and (title is None):
     #         print("Either collection_id or title should be provided")
