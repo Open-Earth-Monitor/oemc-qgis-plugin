@@ -245,7 +245,7 @@ class OemcStac:
         self.dlg.listCatalog.currentIndexChanged.connect(self.catalog_task_handler)
         # based on the selection from collections this will trigered
         # following the selection this will fills the listItems
-        self.dlg.listCollection.itemClicked.connect(self.taskhandler_items) 
+        self.dlg.listCollection.itemClicked.connect(self.taskhandler_items)
         # this will fills the listAssets with unique assets
         self.dlg.listItems.itemClicked.connect(self.asset_task_handler)
         # this will set selected variable for seleceted assets
@@ -269,13 +269,13 @@ class OemcStac:
     def _clear_ui(self, params:list) -> None:
         if ('all' in params ) or ('item' in params):
             self.dlg.listItems.clear()
-        
+
         if ('all' in params ) or ('asset' in params):
             self.dlg.listAssets.clear()
-        
+
         if ('all' in params ) or ('collection' in params):
             self.dlg.listCollection.clear()
-        
+
     def _block_button(self):
         self.dlg.addLayers.setEnabled(False)
 
@@ -283,36 +283,34 @@ class OemcStac:
         """
         This function manages Catalog information in the UI.
         """
-        # clearing the UI 
+        # clearing the UI
         self._clear_ui(['all'])
         # disabling the add layer button
         self._block_button()
         # setting the catalog url
         self.main_url = list(self.oemc_stacs.values())[index-1]
-        
+
         self.database = Database(list(self.oemc_stacs.keys())[index-1])
         collection_names = sorted(self.database.get_all_collection_names())
         if collection_names != []: # if cache exist render it
-            print("cache exist")
+            print("cache exist for collection level")
             self.dlg.listCollection.addItems(collection_names)
-            
+
         # registering catalog task to run in background
         # create catalog task
         access_catalog = CatalogTask(self.main_url)
         # registering
         self.task_manager.addTask(access_catalog)
-       
+
         # handling with the results
         access_catalog.result.connect(self.listing_collection)
         access_catalog.catalogSignal.connect(self.handling_catalog)
-
-        
 
     # handler function of catalog task
     def handling_catalog(self, catalog_object):
         # handles catalog
         self._catalog = catalog_object
-    
+
     # handler of collections
     def listing_collection(self, algo_out):
         """
@@ -324,57 +322,55 @@ class OemcStac:
 
         self._collection_meta = algo_out
         if titles_request != titles_cache:
-            print("no cache or inconsistent cache")
+            print("no cache or inconsistent cache for collection level")
             self._clear_ui(['all']) # clear ui
             self.database.flush_all()
             self.dlg.listCollection.addItems(titles_request)
             """db submission for collection"""
             for id, title in zip(algo_out['index'], algo_out['title']): # , algo_out['description']
                 self.database.insert_collection(id, title) # , description
-     
+
     def taskhandler_items(self):
         """
         This function manages the lists of Items and Assets
         The assets count and the naming convetions of them should be consistent
-        regarding the stac specifications. To overcome the possible inconsistency 
+        regarding the stac specifications. To overcome the possible inconsistency
         among them an user control flow had been added.
         """
         # clearing the items and assets for the UI
         self._clear_ui(['item','asset'])
-        
+
         # disabling the addlayer button
         self._block_button()
         # registering the task to scheduler
 
         select_collection = ListSelectionTask(self.dlg.listCollection)
-        
+
         self.task_manager.addTask(select_collection)
         select_collection.result.connect(self.listing_items)
-        
+
     # task handler function of items
     def listing_items(self, arg):
-        ind = self._collection_meta['title'].index(
-            sorted(self._collection_meta['title'])[arg[0]]
-        )
-        self._a_collection = self._collection_meta['index'][ind]
-        #self._a_collection is a collection id
+        
+        collection_meta = self.database.get_collections()
+        _, collection_objectID = collection_meta[arg[0]]
+        print(collection_objectID)
+        print("here it is")
+        items_objectId = self.database.get_item_by_collection_id(collection_objectID)
 
-        listing_items = ItemTask(ind, self._collection_meta, self._catalog)
-        self.task_manager.addTask(listing_items)
-        
-        listing_items.result.connect(self.listhandler_items)
-        
-        
-        # self.database.insert_items(self._all_items, self._a_collection)
-        
-    
+        if items_objectId != []: # in case there is cache
+            self.dlg.listItems.addItems(items_objectId)
+        else: # in case there is no cache
+            listing_items = ItemTask(collection_objectID, self._catalog)
+            self.task_manager.addTask(listing_items)
+            listing_items.result.connect(self.listhandler_items)
+
     # sending item names to UI
     def listhandler_items(self, id_list):
         self.dlg.listItems.addItems(id_list)
         self._all_items = id_list # list of the items
-        
+
         # submission to db
-        print("submisson")
         self.database.insert_items(self._all_items, self._a_collection)
 
 
@@ -384,7 +380,7 @@ class OemcStac:
         """
         self._clear_ui(['asset'])
         # disabling the add layer button
-        self.dlg.addLayers.setEnabled(False)
+        self._block_button()
         # generating a task to handle the assets
         selecting_items = ListSelectionTask(self.dlg.listItems)
         self.task_manager.addTask(selecting_items)
@@ -392,8 +388,8 @@ class OemcStac:
         # handling the task result
         selecting_items.result.connect(self.listing_assets)
         selecting_items.result.connect(self.handle_styles)
-        
-    # handles with selected items 
+
+    # handles with selected items
     def listing_assets(self, selectedItems):
         """
         this function generates a task to handle with the assets
@@ -407,11 +403,6 @@ class OemcStac:
         )
         self.task_manager.addTask(listing_assets)
         listing_assets.result.connect(self.listhandler_assets)
-        listing_assets.assetUrls.connect(self.test_me)
-        
-    def test_me(self, something):
-        print('something '*10)
-        print(something)
 
     def handle_styles(self, selectedItems):
         """
@@ -424,38 +415,38 @@ class OemcStac:
         style_resolver.result.connect(self.handling_colors)
         style_resolver.styleContainer.connect(self.handle_style_files)
 
-        
+
     def listhandler_assets(self,givenlist):
         # asset task result handler. lists the assets in the ui and assign
         # the value to a in memory object
-        print("givenlist")
-        print(givenlist)
-        print("givenlist")
+        # print("givenlist")
+        # print(givenlist)
+        # print("givenlist")
         self.dlg.listAssets.addItems(givenlist)
         self._all_assets = givenlist
 
         # print(50*'*')
         # print(self._all_items)
-        print(50*'*')
-        print(givenlist)
-        print(50*'*')
+        # print(50*'*')
+        # print(givenlist)
+        # print(50*'*')
 
     def handling_colors(self, given_cc):
         # asssing the the color schema to local object
         self._colors = given_cc
 
     def handle_style_files(self, styleFiles):
-        print(50*"@")
-        print(self._all_items)
-        print(self._all_assets)
         print(styleFiles)
-        print(50*"@")
-        
+    #     print(50*"@")
+    #     print(self._all_items)
+    #     print(self._all_assets)
+    #     print(50*"@")
+
     # enabling the addLayers button
     def selecting_assets(self):
         self.dlg.addLayers.setEnabled(True)
 
-    
+
     def add_layers_in_parallel(self):
         # implementation of registering the cloud optimized geotiffs to QGIS
 
@@ -467,11 +458,11 @@ class OemcStac:
             # getter for the selected items
             self._query_keys["items"] =  [self._all_items[i] for i in passedArg]
 
-            # settings for the progress bar 
+            # settings for the progress bar
             total_len = len(self._query_keys['assets']) * len(self._query_keys['items'])
             self.dlg.progressBar.setMaximum(total_len)
-            
-            # calling the registry function 
+
+            # calling the registry function
             call_parallel_implementation()
             # resseting the progress bar
             self.dlg.progressBar.reset()
@@ -490,14 +481,14 @@ class OemcStac:
             # count of the total assets that selected
             total_count = len(self._query_keys['assets']) * len(self._query_keys['items'])
             count = 0
-            # setting max value of the progress bar 
+            # setting max value of the progress bar
             self.dlg.progressBar.setMaximum(total_count)
             """
             Logic below perfoms a check to the layerTreeRoot to see a group called `col_name`
-                if the collection name exists 
+                if the collection name exists
                     it will perform another search for the items
                     if the item is exist it will hash the raster name to a list and registers it to QGIS
-                    if the item is not exist in the hash it will hast it and insert a item tree in the layerTreeRoot 
+                    if the item is not exist in the hash it will hast it and insert a item tree in the layerTreeRoot
 
             """
             for asset in self._query_keys['assets']:
@@ -506,9 +497,9 @@ class OemcStac:
                     col_name = self._catalog.get_collection(self._a_collection).title
                     # looking for exist or not in the layerTreeRoot
                     col_tree = QgsProject.instance().layerTreeRoot().findGroup(col_name)
-                    if col_tree: 
+                    if col_tree:
                         item_tree = col_tree.findGroup(item)
-                        
+
                         if item_tree:
                             if asset not in self._inserted[self._a_collection][item]:
                                 # hash the item to a list and ship to the thread
@@ -516,7 +507,7 @@ class OemcStac:
                                 runnable = registerRastersToServer(asset, item, self._a_collection,self._catalog, item_tree, self._colors.get(self._a_collection))
                                 self.thread_pool.start(runnable)
                         else:
-                            # create the item in the layerTreeRoot and ship to a thread to register 
+                            # create the item in the layerTreeRoot and ship to a thread to register
                             item_tree = col_tree.addGroup(item)
                             self._inserted[self._a_collection][item] = [asset]
 
@@ -538,13 +529,13 @@ class OemcStac:
                         # set the progressbar
                         count += 1
                         self.dlg.progressBar.setValue(count)
-                    
+
                     #collapse the item group to prevent the performance issue
                     item_tree.setExpanded(False)
                     if pos_item != 0:
-                        # toggle of the inserted the item to not overload the QGIS 
-                        # in default of it will try to load the layer making range request 
-                        # to source of cloud native geotiff files to prevent the overload 
+                        # toggle of the inserted the item to not overload the QGIS
+                        # in default of it will try to load the layer making range request
+                        # to source of cloud native geotiff files to prevent the overload
                         # the visibility of the layer except the first one should be setted to False
                         item_tree.setItemVisibilityChecked(False)
             # collapse the collection group
