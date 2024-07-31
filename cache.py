@@ -73,10 +73,10 @@ class Database:
         data = [(id, item_id, href) for id, href in zip(ids, hrefs)]
         self.cursor.executemany("INSERT OR IGNORE INTO asset VALUES(?,?,?)", data)
         self.connection.commit()
-        # self.connection.close()
+
 
     def get_collection_by_title(self, title):
-        objectId = self.cursor.execute("SELECT objectId FROM collection WHERE title LIKE ?", ("%"+title+"%",)).fetchone()[0]
+        objectId = self.cursor.execute("SELECT objectId FROM collection WHERE title = ?", (title,)).fetchone()[0]
         return objectId
 
     def get_all_collection_names(self):
@@ -91,11 +91,14 @@ class Database:
         return title_list
 
     def get_item_by_collection_id(self, collection_id):
-        return [i[0] for i in self.cursor.execute("SELECT objectId FROM item WHERE collection_objectId LIKE ?",("%"+collection_id+"%",)).fetchall()]
+        return [i[0] for i in self.cursor.execute("SELECT objectId FROM item WHERE collection_objectId = ?",(collection_id,)).fetchall()]
     
     def get_asset_by_item_id(self, item_id):
-        return self.cursor.execute("SELECT objectId FROM asset item_objectId LIKE ?", ("%"+item_id+"%",)).fetchall()
+        return self.cursor.execute("SELECT objectId FROM asset item_objectId = ?", (item_id,)).fetchall()
 
+    def get_collections(self):
+        return self.cursor.execute("SELECT title, objectId FROM collection ORDER BY title ASC").fetchall()
+    
     # def get_collection(self, collection_id=None, title=None):
     #     if (collection_id is None) and (title is None):
     #         print("Either collection_id or title should be provided")
