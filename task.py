@@ -63,24 +63,22 @@ class ListSelectionTask(QgsTask):
 # to access the items using the threads
 class ItemTask(QgsTask):
     result = pyqtSignal(list)
-
-    def __init__(self, index, meta_collection, meta_catalog) -> None:
+    request = pyqtSignal(list)
+    def __init__(self, item_objectId, meta_catalog) -> None:
         super().__init__("listing items")
-        self.index = index
-        self.meta_collection = meta_collection
         self.meta_catalog = meta_catalog
+        self.objectId = item_objectId
         self.items = None
 
     def run(self) -> bool:
-        _items = self.meta_catalog.get_collection(
-            self.meta_collection['index'][self.index]
-        ).get_items()
+        _items = self.meta_catalog.get_collection(self.objectId).get_items()
         self.items = [item.id for item in _items]
         return True
 
     def finished(self, result: bool) -> None:
         if result:
             self.result.emit(self.items)
+
     
 
 # to handle the assets in the selected catalog
