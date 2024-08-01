@@ -354,8 +354,9 @@ class OemcStac:
         
         collection_meta = self.database.get_collections()
         _, collection_objectID = collection_meta[arg[0]]
+        print(collection_objectID)
+        print("here it is")
         items_objectId = self.database.get_item_by_collection_id(collection_objectID)
-        self._a_collection = collection_objectID
 
         if items_objectId != []: # in case there is cache
             self.dlg.listItems.addItems(items_objectId)
