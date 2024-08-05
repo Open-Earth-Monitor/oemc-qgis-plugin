@@ -41,6 +41,8 @@ from pystac_client.client import Client
 from .task import CatalogTask, ListSelectionTask, ItemTask, AssetTask, StyleTask, registerRastersToServer
 from .cache import Database
 
+from .threads import CatalogThread, ItemThread, AssetThread
+
 #importing the QT libs to control ui
 from qgis.core import QgsProject, QgsRasterLayer, QgsTask, QgsApplication
 from qgis.PyQt.QtCore import QRunnable, Qt, QThreadPool
@@ -299,6 +301,13 @@ class OemcStac:
         # registering catalog task to run in background
         # create catalog task
         access_catalog = CatalogTask(self.main_url)
+        # print('test starts here')
+        # test_cat = CatalogThread(self.main_url)
+        # self.task_manager.addTask(test_cat)
+        # def print_me(smth):
+        #     print(smth)
+        # test_cat.result.connect(print_me)
+        # print('test ends here')
         # registering
         self.task_manager.addTask(access_catalog)
 
@@ -354,13 +363,20 @@ class OemcStac:
         
         collection_meta = self.database.get_collections()
         _, collection_objectID = collection_meta[arg[0]]
-        print(collection_objectID)
-        print("here it is")
+        self._a_collection = collection_objectID
+        # print(collection_objectID)
+        # print("here it is")
         items_objectId = self.database.get_item_by_collection_id(collection_objectID)
 
         if items_objectId != []: # in case there is cache
             self.dlg.listItems.addItems(items_objectId)
         else: # in case there is no cache
+            # test_item = ItemThread(self.main_url, collection_objectID)
+            # self.task_manager.addTask(test_item)
+            # def print_me(arg):
+            #     print(arg)
+            # test_item.result.connect(print_me)
+            # print("test item ends")
             listing_items = ItemTask(collection_objectID, self._catalog)
             self.task_manager.addTask(listing_items)
             listing_items.result.connect(self.listhandler_items)
@@ -391,13 +407,19 @@ class OemcStac:
 
     # handles with selected items
     def listing_assets(self, selectedItems):
+        print('selectedItems:',selectedItems)
         """
         this function generates a task to handle with the assets
         """
-        print("self._a_collection :", self._catalog)
-        print("self._a_collection :", self._a_collection)
-        print("self._all_items :", self._all_items)
 
+        # test_asset = AssetThread(self.main_url, self._a_collection, self._all_items, selectedItems)
+        # self.task_manager.addTask(test_asset)
+        # def print_me(arg): 
+        #     print(arg)
+        #     print('123')
+        # test_asset.result.connect(print_me)
+        # print("test 3 ends here")
+        # print(self._a_collection)
         self._clear_ui(['asset'])
         listing_assets = AssetTask(
             self._catalog,
