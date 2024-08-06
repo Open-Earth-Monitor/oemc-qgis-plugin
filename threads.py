@@ -6,7 +6,10 @@ from pystac_client.client import Client
 class CatalogThread(QgsTask):
     """
         accesses the stac and collects the title and id of the collections
-        returns a dictionary of title:id pairs    
+        returns a dictionary of title:id pairs
+
+        Inputs:
+            url : url of the catalog 
     """
     result = pyqtSignal(dict)
 
@@ -31,6 +34,11 @@ class ItemThread(QgsTask):
     """
         Accesses to the given catalog and collects the id of the items 
         using given collection id
+
+        Inputs:
+            url : url of the catalog
+            collection_id: id of the selected collection
+
     """
     result = pyqtSignal(list)
 
@@ -51,7 +59,13 @@ class ItemThread(QgsTask):
             self.result.emit(self.item_ids)
 
 class AssetThread(QgsTask):
-
+    """
+        Inputs:
+            url : url of the catalog
+            collection_id: id of the selected collection
+            item_ids: all items that is nested under the selected collection
+            selected_item_indexes: indexes of the selected items
+    """
     result = pyqtSignal(list)
 
     def __init__(self, url, collection_id, item_ids, selected_item_indexes):
