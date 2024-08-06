@@ -80,7 +80,7 @@ class Database:
         return objectId
 
     def get_all_collection_names(self):
-        return [i[0] for i in self.cursor.execute("SELECT title FROM collection").fetchall()]
+        return [i[0] for i in self.cursor.execute("SELECT title FROM collection ORDER BY title ASC").fetchall()]
     
     def get_all_collection_objectId(self):
         return [i[0] for i in self.cursor.execute("SELECT objectId FROM collection").fetchall()]
@@ -99,6 +99,19 @@ class Database:
     def get_collections(self):
         return self.cursor.execute("SELECT title, objectId FROM collection ORDER BY title ASC").fetchall()
     
+    def get_collection_titles_ordered(self):
+        return [i[0] for i in self.get_collections()]
+    
+    def get_collection_ids_ordered(self):
+        return [i[1] for i in self.get_collections()]
+    
+    def get_value_from_table(self, tablename, fieldname, fieldvalue):
+        return [i[0] for i in self.cursor.execute(f"SELECT {fieldname} FROM {tablename} WHERE {fieldname} = ?", (fieldvalue,)).fetchall()]
+    
+    def delete_value_from_table(self, tablename, fieldname, fieldvalue):
+        self.cursor.execute(f"DELETE FROM {tablename} WHERE {fieldname} = ?", (fieldvalue,))
+        self.connection.commit()
+
     # def get_collection(self, collection_id=None, title=None):
     #     if (collection_id is None) and (title is None):
     #         print("Either collection_id or title should be provided")

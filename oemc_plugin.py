@@ -247,7 +247,9 @@ class OemcStac:
         self.dlg.listCatalog.currentIndexChanged.connect(self.catalog_task_handler)
         # based on the selection from collections this will trigered
         # following the selection this will fills the listItems
-        self.dlg.listCollection.itemClicked.connect(self.taskhandler_items)
+        # self.dlg.listCollection.itemClicked.connect(self.taskhandler_items)
+        self.dlg.listCollection.itemClicked.connect(self.item_task_handler)
+        """refactor below"""
         # this will fills the listAssets with unique assets
         self.dlg.listItems.itemClicked.connect(self.asset_task_handler)
         # this will set selected variable for seleceted assets
@@ -256,7 +258,7 @@ class OemcStac:
         # self.dlg.addStrategy.addItems(self.strategies)
         # finally some one is going to push the addLayers button
 
-        self.dlg.addLayers.clicked.connect(self.add_layers_in_parallel) # add_layers) # #
+        self.dlg.addLayers.clicked.connect(self.add_layers_in_parallel)
         self.dlg.progressBar.reset()
         self.dlg.progressBar.setTextVisible(True)
         # show the dialog
@@ -281,115 +283,68 @@ class OemcStac:
     def _block_button(self):
         self.dlg.addLayers.setEnabled(False)
 
-    def catalog_task_handler(self, index:int):
+    def catalog_task_handler(self, _):
         """
         This function manages Catalog information in the UI.
         """
-        # clearing the UI
+        # clean the ui and diable the add button
         self._clear_ui(['all'])
-        # disabling the add layer button
         self._block_button()
-        # setting the catalog url
-        self.main_url = list(self.oemc_stacs.values())[index-1]
+        
+        selected_catalogname = self.dlg.listCatalog.currentText()
+        if selected_catalogname != "":
+            self.database = Database(selected_catalogname)
 
-        self.database = Database(list(self.oemc_stacs.keys())[index-1])
-        collection_names = sorted(self.database.get_all_collection_names())
-        if collection_names != []: # if cache exist render it
-            print("cache exist for collection level")
+        # check cache exist or not
+        collection_names = [i[0] for i in self.database.get_collections()]
+        if collection_names != []:
             self.dlg.listCollection.addItems(collection_names)
 
-        # registering catalog task to run in background
-        # create catalog task
-        access_catalog = CatalogTask(self.main_url)
-        # print('test starts here')
-        # test_cat = CatalogThread(self.main_url)
-        # self.task_manager.addTask(test_cat)
-        # def print_me(smth):
-        #     print(smth)
-        # test_cat.result.connect(print_me)
-        # print('test ends here')
-        # registering
-        self.task_manager.addTask(access_catalog)
+        catalog_thread = CatalogThread(self.current_url())
+        self.task_manager.addTask(catalog_thread)
+        catalog_thread.result.connect(self.listing_thread_collection)
 
-        # handling with the results
-        access_catalog.result.connect(self.listing_collection)
-        access_catalog.catalogSignal.connect(self.handling_catalog)
-
-    # handler function of catalog task
-    def handling_catalog(self, catalog_object):
-        # handles catalog
-        self._catalog = catalog_object
-
-    # handler of collections
-    def listing_collection(self, algo_out):
-        """
-        the input in the form of a dict with keys title id and desciption
-        """
-        # handles the collection list in UI
-        titles_request = sorted(algo_out['title'])
-        titles_cache = sorted(self.database.get_all_collection_names())
-
-        self._collection_meta = algo_out
-        if titles_request != titles_cache:
-            print("no cache or inconsistent cache for collection level")
-            self._clear_ui(['all']) # clear ui
-            self.database.flush_all()
-            self.dlg.listCollection.addItems(titles_request)
-            """db submission for collection"""
-            for id, title in zip(algo_out['index'], algo_out['title']): # , algo_out['description']
-                self.database.insert_collection(id, title) # , description
-
-    def taskhandler_items(self):
-        """
-        This function manages the lists of Items and Assets
-        The assets count and the naming convetions of them should be consistent
-        regarding the stac specifications. To overcome the possible inconsistency
-        among them an user control flow had been added.
-        """
-        # clearing the items and assets for the UI
+    def listing_thread_collection(self, arg):
+        if self.database.get_all_collection_names() != list(arg.keys()):
+            self._clear_ui(['all']) # clean the ui
+            self.database.flush_all() # clean the cache
+            self.dlg.listCollection.addItems(list(arg.keys())) # fill the ui
+            # create the cache
+            for title, id in arg.items(): 
+                self.database.insert_collection(id, title)
+    
+    def current_url(self):
+        name = self.dlg.listCatalog.currentText()
+        if name != "":
+            return self.oemc_stacs[name]
+    
+    def current_collection_id(self):
+        return self.database.get_collection_ids_ordered()[self.dlg.listCollection.currentRow()]
+    
+    def item_task_handler(self, _):
+        # clean the ui and block the button
         self._clear_ui(['item','asset'])
-
-        # disabling the addlayer button
         self._block_button()
-        # registering the task to scheduler
-
-        select_collection = ListSelectionTask(self.dlg.listCollection)
-
-        self.task_manager.addTask(select_collection)
-        select_collection.result.connect(self.listing_items)
-
-    # task handler function of items
-    def listing_items(self, arg):
         
-        collection_meta = self.database.get_collections()
-        _, collection_objectID = collection_meta[arg[0]]
-        self._a_collection = collection_objectID
-        # print(collection_objectID)
-        # print("here it is")
-        items_objectId = self.database.get_item_by_collection_id(collection_objectID)
+        items_cache = self.database.get_item_by_collection_id(self.current_collection_id())
+        if items_cache != []:
+            self.dlg.listItems.addItems(items_cache)
+        
+        item_thread = ItemThread(self.current_url(), self.current_collection_id())
+        self.task_manager.addTask(item_thread)
+        item_thread.result.connect(self.listing_thread_items)
+    
+    def listing_thread_items(self, args):
 
-        if items_objectId != []: # in case there is cache
-            self.dlg.listItems.addItems(items_objectId)
-        else: # in case there is no cache
-            # test_item = ItemThread(self.main_url, collection_objectID)
-            # self.task_manager.addTask(test_item)
-            # def print_me(arg):
-            #     print(arg)
-            # test_item.result.connect(print_me)
-            # print("test item ends")
-            listing_items = ItemTask(collection_objectID, self._catalog)
-            self.task_manager.addTask(listing_items)
-            listing_items.result.connect(self.listhandler_items)
+        if args != self.database.get_item_by_collection_id(self.current_collection_id()):
+            self.dlg.listItems.addItems(args)
+            # delete the records has missmatch from the cache
+            self.database.delete_value_from_table("item", "collection_objectId", self.current_collection_id())
+            self.database.insert_items(args, self.current_collection_id())
 
-    # sending item names to UI
-    def listhandler_items(self, id_list):
-        self.dlg.listItems.addItems(id_list)
-        self._all_items = id_list # list of the items
+    """ refactor below """
 
-        # submission to db
-        self.database.insert_items(self._all_items, self._a_collection)
-
-
+    
     def asset_task_handler(self):
         """
         this functions creates a task to handle with the assets information
@@ -397,13 +352,14 @@ class OemcStac:
         self._clear_ui(['asset'])
         # disabling the add layer button
         self._block_button()
+
         # generating a task to handle the assets
         selecting_items = ListSelectionTask(self.dlg.listItems)
         self.task_manager.addTask(selecting_items)
 
         # handling the task result
         selecting_items.result.connect(self.listing_assets)
-        selecting_items.result.connect(self.handle_styles)
+        # selecting_items.result.connect(self.handle_styles)
 
     # handles with selected items
     def listing_assets(self, selectedItems):
@@ -420,16 +376,23 @@ class OemcStac:
         # test_asset.result.connect(print_me)
         # print("test 3 ends here")
         # print(self._a_collection)
-        self._clear_ui(['asset'])
+        # get by query to cache
+        print(self._get_content_ui_items())
+        
+
+        # get by request
         listing_assets = AssetTask(
-            self._catalog,
-            self._a_collection,
-            self._all_items,
+            self._catalog, # Client object
+            self._a_collection, # collection_id
+            self._get_content_ui_items(),
             selectedItems
         )
         self.task_manager.addTask(listing_assets)
         listing_assets.result.connect(self.listhandler_assets)
-
+    
+    def _get_content_ui_items(self):
+        return [self.dlg.listItems.item(i).text() for i in range(self.dlg.listItems.count())]
+    
     def handle_styles(self, selectedItems):
         """
         this function generates a task to get the colormap of the assets
@@ -566,3 +529,6 @@ class OemcStac:
                         item_tree.setItemVisibilityChecked(False)
             # collapse the collection group
             col_tree.setExpanded(False)
+
+# Qt5 documentation
+# https://doc.qt.io/qt-5/qtwidgets-module.html
