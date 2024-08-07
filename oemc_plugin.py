@@ -249,9 +249,9 @@ class OemcStac:
         # following the selection this will fills the listItems
         # self.dlg.listCollection.itemClicked.connect(self.taskhandler_items)
         self.dlg.listCollection.itemClicked.connect(self.item_task_handler)
-        """refactor below"""
         # this will fills the listAssets with unique assets
         self.dlg.listItems.itemClicked.connect(self.asset_task_handler)
+        """refactor below"""
         # this will set selected variable for seleceted assets
         self.dlg.listAssets.itemClicked.connect(self.selecting_assets)
         # this will fills the strategies wit predefined add layer strategies
@@ -335,64 +335,37 @@ class OemcStac:
         item_thread.result.connect(self.listing_thread_items)
     
     def listing_thread_items(self, args):
-
         if args != self.database.get_item_by_collection_id(self.current_collection_id()):
             self.dlg.listItems.addItems(args)
-            # delete the records has missmatch from the cache
+            # delete the records have missmatch with the cache
             self.database.delete_value_from_table("item", "collection_objectId", self.current_collection_id())
             self.database.insert_items(args, self.current_collection_id())
 
     """ refactor below """
+    def current_items(self):
+        return [i.text() for i in self.dlg.listItems.selectedItems()]
 
-    
-    def asset_task_handler(self):
-        """
-        this functions creates a task to handle with the assets information
-        """
+    def asset_task_handler(self,_):
+        # clean the ui and block the button
         self._clear_ui(['asset'])
-        # disabling the add layer button
         self._block_button()
 
-        # generating a task to handle the assets
-        selecting_items = ListSelectionTask(self.dlg.listItems)
-        self.task_manager.addTask(selecting_items)
-
-        # handling the task result
-        selecting_items.result.connect(self.listing_assets)
-        # selecting_items.result.connect(self.handle_styles)
-
-    # handles with selected items
-    def listing_assets(self, selectedItems):
-        print('selectedItems:',selectedItems)
-        """
-        this function generates a task to handle with the assets
-        """
-
-        # test_asset = AssetThread(self.main_url, self._a_collection, self._all_items, selectedItems)
-        # self.task_manager.addTask(test_asset)
-        # def print_me(arg): 
-        #     print(arg)
-        #     print('123')
-        # test_asset.result.connect(print_me)
-        # print("test 3 ends here")
-        # print(self._a_collection)
-        # get by query to cache
-        print(self._get_content_ui_items())
-        
-
-        # get by request
-        listing_assets = AssetTask(
-            self._catalog, # Client object
-            self._a_collection, # collection_id
-            self._get_content_ui_items(),
-            selectedItems
+        asset_cache = self.database.get_asset_by_item_id(self.current_items())
+        if asset_cache != []:
+            print(asset_cache)
+            self.dlg.listAsset.addItems(asset_cache)
+        asset_thread = AssetThread(
+            self.current_url(),
+            self.current_collection_id(),
+            self.current_items()
         )
-        self.task_manager.addTask(listing_assets)
-        listing_assets.result.connect(self.listhandler_assets)
-    
-    def _get_content_ui_items(self):
-        return [self.dlg.listItems.item(i).text() for i in range(self.dlg.listItems.count())]
-    
+        self.task_manager.addTask(asset_thread)
+        asset_thread.result.connect(self.listing_thread_asset)
+        #asset_thread.result.connect(self.handle_style_files)
+
+    def listing_thread_asset(self, args):
+        self.dlg.listAssets.addItems(args)
+
     def handle_styles(self, selectedItems):
         """
         this function generates a task to get the colormap of the assets
@@ -408,8 +381,8 @@ class OemcStac:
     def listhandler_assets(self,givenlist):
         # asset task result handler. lists the assets in the ui and assign
         # the value to a in memory object
-        # print("givenlist")
-        # print(givenlist)
+        print("givenlist")
+        print(givenlist)
         # print("givenlist")
         self.dlg.listAssets.addItems(givenlist)
         self._all_assets = givenlist
