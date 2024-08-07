@@ -94,7 +94,9 @@ class Database:
         return [i[0] for i in self.cursor.execute("SELECT objectId FROM item WHERE collection_objectId = ?",(collection_id,)).fetchall()]
     
     def get_asset_by_item_id(self, item_id):
-        return self.cursor.execute("SELECT objectId FROM asset item_objectId = ?", (item_id,)).fetchall()
+        return []
+        # return self.cursor.execute(f"SELECT objectId FROM asset item_objectId IN ({','.join(['?'] * len(item_id))})", (item_id,)).fetchall()
+        # return self.cursor.execute("SELECT objectId FROM asset item_objectId = ?", (item_id,)).fetchall()
 
     def get_collections(self):
         return self.cursor.execute("SELECT title, objectId FROM collection ORDER BY title ASC").fetchall()
@@ -112,15 +114,6 @@ class Database:
         self.cursor.execute(f"DELETE FROM {tablename} WHERE {fieldname} = ?", (fieldvalue,))
         self.connection.commit()
 
-    # def get_collection(self, collection_id=None, title=None):
-    #     if (collection_id is None) and (title is None):
-    #         print("Either collection_id or title should be provided")
-    #         raise ValueError 
-    #     if title:
-    #         self.get_collection_by_title(title)
-        
-    #     self.cursor.execute("SELECT title FROM collection WHERE objectId LIKE ?", ("%"+collection_id+"%",))
-        
     def flush_collection(self):
         self.cursor.execute("DELETE FROM collection")
 

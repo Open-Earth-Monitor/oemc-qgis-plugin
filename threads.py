@@ -68,11 +68,11 @@ class AssetThread(QgsTask):
     """
     result = pyqtSignal(list)
 
-    def __init__(self, url, collection_id, item_ids, selected_item_indexes):
+    def __init__(self, url, collection_id, item_ids):
         super().__init__("Asset event", QgsTask.CanCancel)
         self.url = url
         self.collection_id = collection_id
-        self.item_ids = [item_ids[i] for i in selected_item_indexes]
+        self.item_ids = item_ids
         self.unique = []
     def run(self) -> bool:
         catalog = Client.open(self.url)
