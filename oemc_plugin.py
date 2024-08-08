@@ -351,9 +351,11 @@ class OemcStac:
         self._block_button()
 
         asset_cache = self.database.get_asset_by_item_id(self.current_items())
+        print(asset_cache)
         if asset_cache != []:
-            print(asset_cache)
-            self.dlg.listAsset.addItems(asset_cache)
+            print('this is a cache')
+            self.dlg.listAssets.addItems(asset_cache)
+            
         asset_thread = AssetThread(
             self.current_url(),
             self.current_collection_id(),
@@ -364,7 +366,14 @@ class OemcStac:
         #asset_thread.result.connect(self.handle_style_files)
 
     def listing_thread_asset(self, args):
-        self.dlg.listAssets.addItems(args)
+        cache = self.database.get_asset_by_item_id(self.current_items())
+        if set(args) != set(cache):
+            self.dlg.listAssets.addItems(args)
+            #delete the records that has a mismatch with the deriveded response
+            if len(cache) > 0:
+                self.database.delete_value_from_table("asset","item_objectId", self.current_items())
+            self.database.insert_assets(args, self.current_items())
+
 
     def handle_styles(self, selectedItems):
         """
