@@ -184,7 +184,7 @@ class Database:
             Returns:
                 list of the asset id
         """
-        return [i[0] for i in self.cursor.execute(f"SELECT objectId FROM asset WHERE item_objectId IN ({','.join(['?'] * len(item_id))})", item_id).fetchall()]
+        return [i[0] for i in self.cursor.execute(f"SELECT DISTINCT objectId FROM asset WHERE item_objectId IN ({','.join(['?'] * len(item_id))})", item_id).fetchall()]
         # return self.cursor.execute("SELECT objectId FROM asset item_objectId = ?", (item_id,)).fetchall()
 
     def get_collections(self) -> tuple:
