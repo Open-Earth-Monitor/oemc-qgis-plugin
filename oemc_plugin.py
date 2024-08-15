@@ -251,14 +251,16 @@ class OemcStac:
         self.dlg.listCollection.itemClicked.connect(self.item_task_handler)
         # this will fills the listAssets with unique assets
         self.dlg.listItems.itemClicked.connect(self.asset_task_handler)
-        """refactor below"""
         # this will set selected variable for seleceted assets
         self.dlg.listAssets.itemClicked.connect(self.selecting_assets)
         # this will fills the strategies wit predefined add layer strategies
         # self.dlg.addStrategy.addItems(self.strategies)
         # finally some one is going to push the addLayers button
-
-        self.dlg.addLayers.clicked.connect(self.add_layers_in_parallel)
+        """refactor below"""
+        #self.dlg.addLayers.clicked.connect(self.add_layers_in_parallel)
+        
+        self.dlg.addLayers.clicked.connect(self.register_dataset)
+        
         self.dlg.progressBar.reset()
         self.dlg.progressBar.setTextVisible(True)
         # show the dialog
@@ -298,7 +300,6 @@ class OemcStac:
         # check cache exist or not
         collection_names = [i[0] for i in self.database.get_all_collection_names()]
         if collection_names != []:
-            print('cache kicks in for collection names')
             self.dlg.listCollection.addItems(collection_names)
         else:
             catalog_thread = CatalogThread(self.current_url())
@@ -321,6 +322,9 @@ class OemcStac:
     def current_collection_id(self):
         return self.database.get_collection_ids_ordered()[self.dlg.listCollection.currentRow()]
 
+    def current_collection_name(self):
+        return self.database.get_collection_titles_ordered()[self.dlg.listCollection.currentRow()]
+    
     def item_task_handler(self, _):
         # clean the ui and block the button
         self._clear_ui(['item','asset'])
@@ -384,6 +388,8 @@ class OemcStac:
         
         #self.database.insert_assets(args, self.all_items())
 
+    def current_assets(self):
+        return [i.text() for i in self.dlg.listAssets.selectedItems()]
     """ refactor below """
 
     def handle_styles(self, selectedItems):
@@ -398,36 +404,41 @@ class OemcStac:
         style_resolver.styleContainer.connect(self.handle_style_files)
 
 
-    def listhandler_assets(self,givenlist):
-        # asset task result handler. lists the assets in the ui and assign
-        # the value to a in memory object
-        print("givenlist")
-        print(givenlist)
-        # print("givenlist")
-        self.dlg.listAssets.addItems(givenlist)
-        self._all_assets = givenlist
+    # def listhandler_assets(self,givenlist):
+    #     # asset task result handler. lists the assets in the ui and assign
+    #     # the value to a in memory object
+    #     print("givenlist")
+    #     print(givenlist)
+    #     # print("givenlist")
+    #     self.dlg.listAssets.addItems(givenlist)
+    #     self._all_assets = givenlist
 
-        # print(50*'*')
-        # print(self._all_items)
-        # print(50*'*')
-        # print(givenlist)
-        # print(50*'*')
+    #     # print(50*'*')
+    #     # print(self._all_items)
+    #     # print(50*'*')
+    #     # print(givenlist)
+    #     # print(50*'*')
 
-    def handling_colors(self, given_cc):
-        # asssing the the color schema to local object
-        self._colors = given_cc
+    # def handling_colors(self, given_cc):
+    #     # asssing the the color schema to local object
+    #     self._colors = given_cc
 
-    def handle_style_files(self, styleFiles):
-        print(styleFiles)
-    #     print(50*"@")
-    #     print(self._all_items)
-    #     print(self._all_assets)
-    #     print(50*"@")
+    # def handle_style_files(self, styleFiles):
+    #     print(styleFiles)
+    # #     print(50*"@")
+    # #     print(self._all_items)
+    # #     print(self._all_assets)
+    # #     print(50*"@")
 
     # enabling the addLayers button
     def selecting_assets(self):
         self.dlg.addLayers.setEnabled(True)
 
+    def register_dataset(self):
+
+        data = self.database.get_data_from_asset(self.current_items(), self.current_assets())
+        collection_name = self.current_collection_name()
+        collection_tree = QgsProject.instance().layerTreeRoot().findGroup(collection_name)
 
     def add_layers_in_parallel(self):
         # implementation of registering the cloud optimized geotiffs to QGIS
