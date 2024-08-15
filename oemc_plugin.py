@@ -36,22 +36,17 @@ import os
 from pathlib import Path
 import sys
 sys.path.append(str(Path(__file__).parents[0])+'/src') # findable lib path
-from pystac_client.client import Client
 
-from .task import CatalogTask, ListSelectionTask, ItemTask, AssetTask, StyleTask, registerRastersToServer
 from .cache import Database
 
-from .threads import CatalogThread, ItemThread, AssetThread, HypertextThread
+from .threads import CatalogThread, ItemThread, AssetThread, HypertextThread, RegisterData
 
 #importing the QT libs to control ui
-from qgis.core import QgsProject, QgsRasterLayer, QgsTask, QgsApplication
-from qgis.PyQt.QtCore import QRunnable, Qt, QThreadPool
+from qgis.core import QgsProject, QgsApplication
+from qgis.PyQt.QtCore import Qt, QThreadPool
 
-from qgis.PyQt.QtCore import Qt, pyqtSignal
-from qgis.PyQt.QtXml import QDomDocument
+from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import QListWidget
-# to access the qml files on the fly
-from urllib.request import urlopen
 
 
 class OemcStac:
@@ -221,13 +216,8 @@ class OemcStac:
             self.dlg = OemcStacDialog()
 
             # creating some variable to handle the state of the plugin
-            self._collection_meta = None
-            self._catalog = None,
-            self._all_items = None
-            self._colors = None
-            self._a_collection = None
-            self._query_keys = dict()
-            self._inserted = dict()
+            
+            
             self.thread_pool = QThreadPool().globalInstance()
             self.thread_pool.setMaxThreadCount(int(self.thread_pool.maxThreadCount()/2))
 
@@ -251,14 +241,14 @@ class OemcStac:
         self.dlg.listCollection.itemClicked.connect(self.item_task_handler)
         # this will fills the listAssets with unique assets
         self.dlg.listItems.itemClicked.connect(self.asset_task_handler)
-        """refactor below"""
         # this will set selected variable for seleceted assets
         self.dlg.listAssets.itemClicked.connect(self.selecting_assets)
         # this will fills the strategies wit predefined add layer strategies
         # self.dlg.addStrategy.addItems(self.strategies)
         # finally some one is going to push the addLayers button
 
-        self.dlg.addLayers.clicked.connect(self.add_layers_in_parallel)
+        self.dlg.addLayers.clicked.connect(self.register_dataset)
+        
         self.dlg.progressBar.reset()
         self.dlg.progressBar.setTextVisible(True)
         # show the dialog
@@ -298,7 +288,6 @@ class OemcStac:
         # check cache exist or not
         collection_names = [i[0] for i in self.database.get_all_collection_names()]
         if collection_names != []:
-            print('cache kicks in for collection names')
             self.dlg.listCollection.addItems(collection_names)
         else:
             catalog_thread = CatalogThread(self.current_url())
@@ -321,6 +310,9 @@ class OemcStac:
     def current_collection_id(self):
         return self.database.get_collection_ids_ordered()[self.dlg.listCollection.currentRow()]
 
+    def current_collection_name(self):
+        return self.database.get_collection_titles_ordered()[self.dlg.listCollection.currentRow()]
+    
     def item_task_handler(self, _):
         # clean the ui and block the button
         self._clear_ui(['item','asset'])
@@ -384,144 +376,30 @@ class OemcStac:
         
         #self.database.insert_assets(args, self.all_items())
 
-    """ refactor below """
-
-    def handle_styles(self, selectedItems):
-        """
-        this function generates a task to get the colormap of the assets
-        using a function called handling_colors
-        """
-
-        style_resolver = StyleTask(self._catalog, self._a_collection, self._all_items, selectedItems)
-        self.task_manager.addTask(style_resolver)
-        style_resolver.result.connect(self.handling_colors)
-        style_resolver.styleContainer.connect(self.handle_style_files)
-
-
-    def listhandler_assets(self,givenlist):
-        # asset task result handler. lists the assets in the ui and assign
-        # the value to a in memory object
-        print("givenlist")
-        print(givenlist)
-        # print("givenlist")
-        self.dlg.listAssets.addItems(givenlist)
-        self._all_assets = givenlist
-
-        # print(50*'*')
-        # print(self._all_items)
-        # print(50*'*')
-        # print(givenlist)
-        # print(50*'*')
-
-    def handling_colors(self, given_cc):
-        # asssing the the color schema to local object
-        self._colors = given_cc
-
-    def handle_style_files(self, styleFiles):
-        print(styleFiles)
-    #     print(50*"@")
-    #     print(self._all_items)
-    #     print(self._all_assets)
-    #     print(50*"@")
+    def current_assets(self):
+        return [i.text() for i in self.dlg.listAssets.selectedItems()]
 
     # enabling the addLayers button
     def selecting_assets(self):
         self.dlg.addLayers.setEnabled(True)
 
+    def register_dataset(self):
 
-    def add_layers_in_parallel(self):
-        # implementation of registering the cloud optimized geotiffs to QGIS
-
-        def get_selected_asset(passedArg):
-            # getter for selected asset in the UI
-            self._query_keys['assets'] = [self._all_assets[i] for i in passedArg]
-
-        def get_selected_items(passedArg):
-            # getter for the selected items
-            self._query_keys["items"] =  [self._all_items[i] for i in passedArg]
-
-            # settings for the progress bar
-            total_len = len(self._query_keys['assets']) * len(self._query_keys['items'])
-            self.dlg.progressBar.setMaximum(total_len)
-
-            # calling the registry function
-            call_parallel_implementation()
-            # resseting the progress bar
-            self.dlg.progressBar.reset()
-
-        # generating the list selection task from listSelection object for assets
-        select_asset = ListSelectionTask(self.dlg.listAssets)
-        self.task_manager.addTask(select_asset)
-        select_asset.result.connect(get_selected_asset)
-        # generating the  item selection task with listSelection object
-        select_item = ListSelectionTask(self.dlg.listItems)
-        self.task_manager.addTask(select_item)
-        select_item.result.connect(get_selected_items)
-
-        # implementation of the registry of COGs with QRunnable
-        def call_parallel_implementation():
-            # count of the total assets that selected
-            total_count = len(self._query_keys['assets']) * len(self._query_keys['items'])
-            count = 0
-            # setting max value of the progress bar
-            self.dlg.progressBar.setMaximum(total_count)
-            """
-            Logic below perfoms a check to the layerTreeRoot to see a group called `col_name`
-                if the collection name exists
-                    it will perform another search for the items
-                    if the item is exist it will hash the raster name to a list and registers it to QGIS
-                    if the item is not exist in the hash it will hast it and insert a item tree in the layerTreeRoot
-
-            """
-            for asset in self._query_keys['assets']:
-                for pos_item, item in enumerate(self._query_keys['items']):
-                    # getting the collection by using title
-                    col_name = self._catalog.get_collection(self._a_collection).title
-                    # looking for exist or not in the layerTreeRoot
-                    col_tree = QgsProject.instance().layerTreeRoot().findGroup(col_name)
-                    if col_tree:
-                        item_tree = col_tree.findGroup(item)
-
-                        if item_tree:
-                            if asset not in self._inserted[self._a_collection][item]:
-                                # hash the item to a list and ship to the thread
-                                self._inserted[self._a_collection][item].append(asset)
-                                runnable = registerRastersToServer(asset, item, self._a_collection,self._catalog, item_tree, self._colors.get(self._a_collection))
-                                self.thread_pool.start(runnable)
-                        else:
-                            # create the item in the layerTreeRoot and ship to a thread to register
-                            item_tree = col_tree.addGroup(item)
-                            self._inserted[self._a_collection][item] = [asset]
-
-                            runnable = registerRastersToServer(asset, item, self._a_collection,self._catalog, item_tree, self._colors.get(self._a_collection))
-                            self.thread_pool.start(runnable)
-                        # increase the count of the progress bar
-                        count += 1
-                        self.dlg.progressBar.setValue(count)
-                    else:
-                        # create the collection in the layerTreeRoot
-                        col_tree = QgsProject.instance().layerTreeRoot().addGroup(col_name)
-                        item_tree = col_tree.addGroup(item)
-                        # generate the hash list and insert the element
-                        self._inserted[self._a_collection] = dict()
-                        self._inserted[self._a_collection][item] = [asset]
-                        # ship it to the thread
-                        runnable = registerRastersToServer(asset, item, self._a_collection,self._catalog, item_tree, self._colors.get(self._a_collection))
-                        self.thread_pool.start(runnable)
-                        # set the progressbar
-                        count += 1
-                        self.dlg.progressBar.setValue(count)
-
-                    #collapse the item group to prevent the performance issue
-                    item_tree.setExpanded(False)
-                    if pos_item != 0:
-                        # toggle of the inserted the item to not overload the QGIS
-                        # in default of it will try to load the layer making range request
-                        # to source of cloud native geotiff files to prevent the overload
-                        # the visibility of the layer except the first one should be setted to False
-                        item_tree.setItemVisibilityChecked(False)
-            # collapse the collection group
-            col_tree.setExpanded(False)
+        data = self.database.get_data_from_asset(self.current_items(), self.current_assets())
+        collection_name = self.current_collection_name()
+        collection_tree = QgsProject.instance().layerTreeRoot().findGroup(collection_name)
+        if collection_tree is None:
+            collection_tree = QgsProject.instance().layerTreeRoot().addGroup(collection_name)
+        for i, d in enumerate(data):
+            item_tree = collection_tree.findGroup(d[0])
+            if item_tree is None:
+                item_tree = collection_tree.addGroup(d[0])
+            data_registerer = RegisterData(d, item_tree)
+            self.thread_pool.start(data_registerer)
+            item_tree.setExpanded(False)
+            if i != 0:
+                item_tree.setItemVisibilityChecked(False)
+        collection_tree.setExpanded(False)
 
 # Qt5 documentation
 # https://doc.qt.io/qt-5/qtwidgets-module.html
