@@ -23,6 +23,7 @@ class Database:
         """
         Establishes a connection to the local database if it exists; 
         if not, will create one and return the connection of the created database.
+        
         Args:
             catalog_name (str): Catalog name
         Returns: 
@@ -49,6 +50,7 @@ class Database:
     def _create_db(self, connection) -> None:
         """
         creates the database file and tables relevat to the STAC
+        
         Args: 
             connection (sqlite object)
         Returns:
@@ -86,6 +88,7 @@ class Database:
     def insert_items(self, ids, collection_id) -> None:
         """
             Inserts items into item table
+            
             Args:
                 ids (list(str)): List of the item ids
                 collection_id (str): collection id
@@ -100,7 +103,6 @@ class Database:
         self.connection.commit()
 
     def insert_assets(self, asset_data) -> None:
-        print("this is a data insertion act")
         """
             Inserts assets into asset table 
             
@@ -147,6 +149,7 @@ class Database:
     def get_all_collection_objectId(self) -> List[str]:
         """
             Executes a query to get the all collection id from collection table
+            
             Args: 
                 None
             Returns:
@@ -158,6 +161,7 @@ class Database:
     def get_collection_by_keyword(self, keyword) -> List[str]:
         """
             Performs a query by relying on a keyword that is provided
+
             Args:
                 keyword (str): keyword to check from the database
             Returns:
@@ -169,6 +173,7 @@ class Database:
     def get_item_by_collection_id(self, collection_id) -> List[str]:
         """
             Gets the item by using the if of the collection
+
             Args:
                 collection_id (str): collection id 
             Returns:
@@ -180,6 +185,7 @@ class Database:
     def get_asset_by_item_id(self, item_id) -> List[str]:
         """
             Make query from the db based on item id
+
             Args:
                 item_id list of the the item ids
             Returns:
@@ -220,6 +226,7 @@ class Database:
     def get_value_from_table(self, tablename, fieldname, fieldvalue) -> List[str]:
         """
             Performs a query of a table by specifing the field name
+
             Args:
                 tablename (str): name of the table one of the following collection/item/asset
                 fieldname (str): name of the column exist for the table like objectId, title, href, or qml
@@ -229,17 +236,36 @@ class Database:
         """
         return [i[0] for i in self.cursor.execute(f"SELECT {fieldname} FROM {tablename} WHERE {fieldname} = ?", (fieldvalue,)).fetchall()]
     
+    def get_data_from_asset(self, items, assets):
+        """
+            Makes a query using assets and items from asset table
+
+            Args:
+                items list(str): list of item ids
+                assets list(str): list of asset ids
+            Returns:
+                list(tuple) : tuples stores item_id, asset_id href of data and qml of relevant data
+        """
+        query = f"""
+            SELECT item_objectId, objectId, href, qml
+            FROM asset
+            WHERE objectId IN ({','.join(['?']*len(assets))})
+            AND item_objectId IN ({','.join(['?']*len(items))})
+            ORDER BY item_objectId ASC
+        """
+        return self.cursor.execute(query, assets + items).fetchall()
+
     def delete_value_from_table(self, tablename, fieldname, fieldvalue) -> None:
         """
             Removes the entries that is specified/filtered
+
             Args:
                 tablename (str): name of the table one of the following collection/item/asset
                 fieldname (str): name of the column exist for the table like objectId, title, href, or qml
                 fieldvalue (str): the desired value of the fieldname to filtered
 
         """
-        print(tablename, fieldname, fieldvalue)
-        print('this message is from the delete funcion in cache')
+
         if type(fieldvalue) is list:
             for fv in fieldvalue:
                 self.cursor.execute(f"DELETE FROM {tablename} WHERE {fieldname} = ?", (fv,))
@@ -250,6 +276,7 @@ class Database:
     def flush_collection(self) -> None:
         """
             Deletes the all entries from the collection table
+
             Args:
                 None
             Returns:
@@ -260,6 +287,7 @@ class Database:
     def flush_item(self) -> None:
         """
             Deletes the all entries from the item table
+
             Args:
                 None
             Returns:
@@ -270,6 +298,7 @@ class Database:
     def flush_asset(self) -> None:
         """
             Deletes the all entries from the asset table
+
             Args:
                 None
             Returns:
@@ -280,6 +309,7 @@ class Database:
     def flush_all(self):
         """
             Deletes the all entries from the all tables
+
             Args:
                 None
             Returns:
