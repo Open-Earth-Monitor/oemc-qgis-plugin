@@ -71,6 +71,7 @@ class Database:
     def insert_collection(self, index, title) -> None: # description
         """
             Inserts a collection to collection table
+            
             Args: 
                 index (str): collection id
                 title (str): collection title 
@@ -98,20 +99,18 @@ class Database:
         self.cursor.executemany("INSERT OR IGNORE INTO item (objectId, collection_objectId) VALUES(?,?)", data)
         self.connection.commit()
 
-    def insert_assets(self, asset_ids, item_ids) -> None:
+    def insert_assets(self, asset_data) -> None:
+        print("this is a data insertion act")
         """
             Inserts assets into asset table 
+            
             Args:
-                asset_ids (list(str)): list of asset ids
-                item_ids (list(str)): list of item ids
+                asset_data list(tuple): list of tuples. Tuple stores the data item_id, asset_id, file_href, qml_href, respectively.
             Returns:
                 None
         """
-        data = []
-        for item_id in item_ids:
-            for asset_id in asset_ids:
-                data.append((item_id, asset_id))
-        self.cursor.executemany("INSERT OR IGNORE INTO asset (item_objectId, objectId) VALUES(?,?)", data)
+
+        self.cursor.executemany("INSERT OR IGNORE INTO asset (item_objectId, objectId, href, qml) VALUES(?,?,?,?)", asset_data)
         self.connection.commit()
 
     # def insert_assets(self, ids, item_id, hrefs):
@@ -125,6 +124,7 @@ class Database:
     def get_collection_by_title(self, title) -> str:
         """
             Performs a query to the table of collection to get the id by title
+            
             Args:
                 title (str): title of the collection
             Returns:
@@ -136,12 +136,13 @@ class Database:
     def get_all_collection_names(self) -> List[str]:
         """
             Executes a query to get the all collection names
+            
             Args:
                 None
             Returns:
                 list of the collection names in the collection table
         """
-        return [i[0] for i in self.cursor.execute("SELECT title FROM collection ORDER BY title ASC").fetchall()]
+        return self.cursor.execute("SELECT title FROM collection ORDER BY title ASC").fetchall()
     
     def get_all_collection_objectId(self) -> List[str]:
         """
@@ -191,9 +192,10 @@ class Database:
         """
             Performs query to db and gets the title and id of 
             the collection in ascending order respect to the title
-            Args:
+
+            Args: 
                 None
-            Returns
+            Returns: 
                 Tuple of the sets that contains title and id of the collections 
         """
         return self.cursor.execute("SELECT title, objectId FROM collection ORDER BY title ASC").fetchall()
@@ -207,6 +209,7 @@ class Database:
     def get_collection_ids_ordered(self) -> List[str]:
         """
             returns the ordered ids of the collections
+            
             Args:
                 None
             Returns:
