@@ -29,7 +29,6 @@ class CatalogThread(QgsTask):
         if result:
             self.result.emit(dict(sorted(self.data.items())))
 
-
 class ItemThread(QgsTask):
     """
         Accesses to the given catalog and collects the id of the items 
@@ -74,6 +73,7 @@ class AssetThread(QgsTask):
         self.collection_id = collection_id
         self.item_ids = selected_items
         self.unique = []
+        
     def run(self) -> bool:
         catalog = Client.open(self.url)
         collection = catalog.get_collection(self.collection_id)
@@ -90,6 +90,34 @@ class AssetThread(QgsTask):
                     if asset not in self.unique:
                         self.unique.append(asset)
             return True
+
     def finished(self, result: bool) -> None:
         if result:
             self.result.emit(self.unique)
+            # self.result.emit([self.unique, self.urls, self.qml])
+
+class HypertextThread(QgsTask):
+    result = pyqtSignal(list)
+    def __init__(self, url, collection_id, item_ids, asset_ids):
+        super().__init__("HyperText event", QgsTask.CanCancel)
+
+        self.url = url
+        self.collection_id = collection_id
+        self.item_ids = item_ids
+        self.asset_ids = asset_ids
+        self.data = []
+
+    def run(self) -> bool:
+        catalog = Client.open(self.url)
+        collection = catalog.get_collection(self.collection_id)
+        for item_id in self.item_ids:
+            assets = collection.get_item(item_id).to_dict()['assets']
+            qml_file = assets['qml']['href']
+            for asset_id in self.asset_ids:
+                href = assets[asset_id]['href']
+                self.data.append((item_id, asset_id, href, qml_file))
+        return True
+    
+    def finished(self, result: bool) -> None:
+        if result:
+            self.result.emit(self.data)

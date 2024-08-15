@@ -41,7 +41,7 @@ from pystac_client.client import Client
 from .task import CatalogTask, ListSelectionTask, ItemTask, AssetTask, StyleTask, registerRastersToServer
 from .cache import Database
 
-from .threads import CatalogThread, ItemThread, AssetThread
+from .threads import CatalogThread, ItemThread, AssetThread, HypertextThread
 
 #importing the QT libs to control ui
 from qgis.core import QgsProject, QgsRasterLayer, QgsTask, QgsApplication
@@ -290,90 +290,101 @@ class OemcStac:
         # clean the ui and diable the add button
         self._clear_ui(['all'])
         self._block_button()
-        
+
         selected_catalogname = self.dlg.listCatalog.currentText()
         if selected_catalogname != "":
             self.database = Database(selected_catalogname)
 
         # check cache exist or not
-        collection_names = [i[0] for i in self.database.get_collections()]
+        collection_names = [i[0] for i in self.database.get_all_collection_names()]
         if collection_names != []:
+            print('cache kicks in for collection names')
             self.dlg.listCollection.addItems(collection_names)
-
-        catalog_thread = CatalogThread(self.current_url())
-        self.task_manager.addTask(catalog_thread)
-        catalog_thread.result.connect(self.listing_thread_collection)
+        else:
+            catalog_thread = CatalogThread(self.current_url())
+            self.task_manager.addTask(catalog_thread)
+            catalog_thread.result.connect(self.listing_thread_collection)
 
     def listing_thread_collection(self, arg):
-        if self.database.get_all_collection_names() != list(arg.keys()):
-            self._clear_ui(['all']) # clean the ui
-            self.database.flush_all() # clean the cache
-            self.dlg.listCollection.addItems(list(arg.keys())) # fill the ui
-            # create the cache
-            for title, id in arg.items(): 
-                self.database.insert_collection(id, title)
-    
+        self._clear_ui(['all']) # clean the ui
+        self.database.flush_all() # clean the cache
+        self.dlg.listCollection.addItems(list(arg.keys())) # fill the ui
+        # create the cache
+        for title, id in arg.items():
+            self.database.insert_collection(id, title)
+
     def current_url(self):
         name = self.dlg.listCatalog.currentText()
         if name != "":
             return self.oemc_stacs[name]
-    
+
     def current_collection_id(self):
         return self.database.get_collection_ids_ordered()[self.dlg.listCollection.currentRow()]
-    
+
     def item_task_handler(self, _):
         # clean the ui and block the button
         self._clear_ui(['item','asset'])
         self._block_button()
-        
+
         items_cache = self.database.get_item_by_collection_id(self.current_collection_id())
         if items_cache != []:
             self.dlg.listItems.addItems(items_cache)
-        
-        item_thread = ItemThread(self.current_url(), self.current_collection_id())
-        self.task_manager.addTask(item_thread)
-        item_thread.result.connect(self.listing_thread_items)
-    
-    def listing_thread_items(self, args):
-        if args != self.database.get_item_by_collection_id(self.current_collection_id()):
-            self.dlg.listItems.addItems(args)
-            # delete the records have missmatch with the cache
-            self.database.delete_value_from_table("item", "collection_objectId", self.current_collection_id())
-            self.database.insert_items(args, self.current_collection_id())
+        else:
+            item_thread = ItemThread(self.current_url(), self.current_collection_id())
+            self.task_manager.addTask(item_thread)
+            item_thread.result.connect(self.listing_thread_items)
 
-    """ refactor below """
+    def listing_thread_items(self, args):
+        # cache_collect_id = self.database.get_item_by_collection_id(self.current_collection_id())
+        # if (args != cache_collect_id):
+        self.dlg.listItems.addItems(args)
+            # delete the records have missmatch with the cache
+        #    self.database.delete_value_from_table("item", "collection_objectId", self.current_collection_id())
+        self.database.insert_items(args, self.current_collection_id())
+
     def current_items(self):
         return [i.text() for i in self.dlg.listItems.selectedItems()]
 
+    def all_items(self):
+        return [self.dlg.listItems.item(i).text() for i in range(self.dlg.listItems.count())]
+        
     def asset_task_handler(self,_):
         # clean the ui and block the button
         self._clear_ui(['asset'])
         self._block_button()
 
         asset_cache = self.database.get_asset_by_item_id(self.current_items())
-        print(asset_cache)
         if asset_cache != []:
-            print('this is a cache')
             self.dlg.listAssets.addItems(asset_cache)
-            
-        asset_thread = AssetThread(
-            self.current_url(),
-            self.current_collection_id(),
-            self.current_items()
-        )
-        self.task_manager.addTask(asset_thread)
-        asset_thread.result.connect(self.listing_thread_asset)
-        #asset_thread.result.connect(self.handle_style_files)
+        else:
+            asset_thread = AssetThread(
+                self.current_url(),
+                self.current_collection_id(),
+                self.all_items()
+            )
+            self.task_manager.addTask(asset_thread)
+            asset_thread.result.connect(self.listing_thread_asset)
+            #asset_thread.result.connect(self.handle_style_files)
 
     def listing_thread_asset(self, args):
-        cache = self.database.get_asset_by_item_id(self.current_items())
-        if set(args) != set(cache):
-            self.dlg.listAssets.addItems(args)
+        # cache = self.database.get_asset_by_item_id(self.current_items())
+        # if set(args) != set(cache):
+        self.dlg.listAssets.addItems(args)
+        hypertext_thread = HypertextThread(
+            self.current_url(),
+            self.current_collection_id(),
+            self.all_items(),
+            args
+        )
+        self.task_manager.addTask(hypertext_thread)
+        hypertext_thread.result.connect(self.database.insert_assets)
             #delete the records that has a mismatch with the deriveded response
-            if len(cache) > 0:
-                self.database.delete_value_from_table("asset","item_objectId", self.current_items())
-            self.database.insert_assets(args, self.current_items())
+            # if len(cache) > 0:
+                # self.database.delete_value_from_table("asset","item_objectId", self.current_items())
+        
+        #self.database.insert_assets(args, self.all_items())
 
+    """ refactor below """
 
     def handle_styles(self, selectedItems):
         """
