@@ -96,7 +96,6 @@ class AssetThread(QgsTask):
     def finished(self, result: bool) -> None:
         if result:
             self.result.emit(self.unique)
-            # self.result.emit([self.unique, self.urls, self.qml])
 
 class HypertextThread(QgsTask):
     result = pyqtSignal(list)
@@ -127,7 +126,7 @@ class HypertextThread(QgsTask):
         if result:
             self.result.emit(self.data)
 
-class RegisterData(QRunnable):
+class RegisterDataThread(QRunnable):
     result = pyqtSignal()
 
     def __init__(self, data, item_tree):
