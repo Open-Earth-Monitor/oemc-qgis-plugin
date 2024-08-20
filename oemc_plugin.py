@@ -32,14 +32,14 @@ from .oemc_plugin_dialog import OemcStacDialog
 import os.path
 import os
 
-# inital settings for the PYSTAC and STAC_CLIENT
 from pathlib import Path
 import sys
+import os 
 sys.path.append(str(Path(__file__).parents[0])+'/src') # findable lib path
 
 from .cache import Database
 
-from .threads import CatalogThread, ItemThread, AssetThread, HypertextThread, RegisterData
+from .threads import CatalogThread, ItemThread, AssetThread, HypertextThread, RegisterDataThread
 
 #importing the QT libs to control ui
 from qgis.core import QgsProject, QgsApplication
@@ -230,6 +230,8 @@ class OemcStac:
             self.dlg.listCatalog.addItem("") # extra space for visual concerns
             self.dlg.listCatalog.addItems(list(self.oemc_stacs.keys()))
             self.dlg.addLayers.setEnabled(False)
+            self.dlg.clearCache.setEnabled(False)
+            self.dlg.searchBox.setEnabled(False)
 
         # functionalities
         # change on the selection of the catalog will update the
@@ -248,9 +250,8 @@ class OemcStac:
         # finally some one is going to push the addLayers button
 
         self.dlg.addLayers.clicked.connect(self.register_dataset)
-        
-        self.dlg.progressBar.reset()
-        self.dlg.progressBar.setTextVisible(True)
+        self.dlg.clearCache.clicked.connect(self.handle_cache)
+        self.dlg.searchBox.textChanged.connect(self.handle_search)
         # show the dialog
         self.dlg.show()
         # Run the dialog event loop
@@ -260,6 +261,7 @@ class OemcStac:
         #     # Do something useful here - delete the line containing pass and
         #     # substitute with your code.
         #     pass
+
     def _clear_ui(self, params:list) -> None:
         if ('all' in params ) or ('item' in params):
             self.dlg.listItems.clear()
@@ -270,9 +272,31 @@ class OemcStac:
         if ('all' in params ) or ('collection' in params):
             self.dlg.listCollection.clear()
 
+    def handle_cache(self):
+        db_file = f"{os.path.dirname(__file__)}/db/{self.dlg.listCatalog.currentText()}.db"
+        if os.path.isfile(db_file):
+            os.remove(db_file)
+        self.dlg.searchBox.clear()
+        self.dlg.listCatalog.setCurrentIndex(0)
+        self._clear_ui(['all'])
+        self.dlg.searchBox.setEnabled(False)
+
+        self.dlg.clearCache.setEnabled(False)
+
+    def handle_search(self, text):
+        self._clear_ui(['all'])
+        if text == ' ':
+            self.dlg.listCollection.addItems(
+                self.database.get_all_collection_names()
+            )
+        else:
+            self.dlg.listCollection.addItems(
+                self.database.get_collection_by_keyword(text)
+            )
+        
     def _block_button(self):
         self.dlg.addLayers.setEnabled(False)
-
+    
     def catalog_task_handler(self, _):
         """
         This function manages Catalog information in the UI.
@@ -284,7 +308,7 @@ class OemcStac:
         selected_catalogname = self.dlg.listCatalog.currentText()
         if selected_catalogname != "":
             self.database = Database(selected_catalogname)
-
+            
         # check cache exist or not
         collection_names = [i[0] for i in self.database.get_all_collection_names()]
         if collection_names != []:
@@ -293,10 +317,12 @@ class OemcStac:
             catalog_thread = CatalogThread(self.current_url())
             self.task_manager.addTask(catalog_thread)
             catalog_thread.result.connect(self.listing_thread_collection)
+        self.dlg.clearCache.setEnabled(True)
+        self.dlg.searchBox.setEnabled(True)
 
     def listing_thread_collection(self, arg):
         self._clear_ui(['all']) # clean the ui
-        self.database.flush_all() # clean the cache
+        # self.database.flush_all() # clean the cache
         self.dlg.listCollection.addItems(list(arg.keys())) # fill the ui
         # create the cache
         for title, id in arg.items():
@@ -308,10 +334,10 @@ class OemcStac:
             return self.oemc_stacs[name]
 
     def current_collection_id(self):
-        return self.database.get_collection_ids_ordered()[self.dlg.listCollection.currentRow()]
+        return self.database.get_collection_by_title(self.dlg.listCollection.currentItem().text())
 
     def current_collection_name(self):
-        return self.database.get_collection_titles_ordered()[self.dlg.listCollection.currentRow()]
+        return self.dlg.listCollection.currentItem().text()
     
     def item_task_handler(self, _):
         # clean the ui and block the button
@@ -356,12 +382,10 @@ class OemcStac:
             )
             self.task_manager.addTask(asset_thread)
             asset_thread.result.connect(self.listing_thread_asset)
-            #asset_thread.result.connect(self.handle_style_files)
 
     def listing_thread_asset(self, args):
-        # cache = self.database.get_asset_by_item_id(self.current_items())
-        # if set(args) != set(cache):
-        self.dlg.listAssets.addItems(args)
+        self._clear_ui(['asset'])
+        self.dlg.listAssets.addItems(list(set(args)))
         hypertext_thread = HypertextThread(
             self.current_url(),
             self.current_collection_id(),
@@ -370,21 +394,15 @@ class OemcStac:
         )
         self.task_manager.addTask(hypertext_thread)
         hypertext_thread.result.connect(self.database.insert_assets)
-            #delete the records that has a mismatch with the deriveded response
-            # if len(cache) > 0:
-                # self.database.delete_value_from_table("asset","item_objectId", self.current_items())
-        
-        #self.database.insert_assets(args, self.all_items())
+
 
     def current_assets(self):
         return [i.text() for i in self.dlg.listAssets.selectedItems()]
 
-    # enabling the addLayers button
     def selecting_assets(self):
         self.dlg.addLayers.setEnabled(True)
 
     def register_dataset(self):
-
         data = self.database.get_data_from_asset(self.current_items(), self.current_assets())
         collection_name = self.current_collection_name()
         collection_tree = QgsProject.instance().layerTreeRoot().findGroup(collection_name)
@@ -394,12 +412,17 @@ class OemcStac:
             item_tree = collection_tree.findGroup(d[0])
             if item_tree is None:
                 item_tree = collection_tree.addGroup(d[0])
-            data_registerer = RegisterData(d, item_tree)
+            data_registerer = RegisterDataThread(d, item_tree)
             self.thread_pool.start(data_registerer)
             item_tree.setExpanded(False)
-            if i != 0:
-                item_tree.setItemVisibilityChecked(False)
+            item_tree.setItemVisibilityChecked(False)
         collection_tree.setExpanded(False)
+        collection_groups = QgsProject.instance().layerTreeRoot().findGroups()
+        if len(collection_groups) == 1:
+            collection_groups[0].findGroups()[0].setItemVisibilityChecked(True)
+        else:
+            collection_index = [i.name() for i in collection_groups].index(self.current_collection_name())
+            QgsProject.instance().layerTreeRoot().findGroups()[collection_index].findGroups()[0].setItemVisibilityChecked(True)
 
 # Qt5 documentation
 # https://doc.qt.io/qt-5/qtwidgets-module.html
