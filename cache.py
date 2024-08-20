@@ -10,15 +10,6 @@ class Database:
         self.connection = self._get_connection(catalog_name)
         self.cursor = self.connection.cursor()
             
-    def read(self) -> None:
-        pass
-
-    def update(self) -> None:
-        pass
-
-    def delete(self) -> None:
-        pass
-
     def _get_connection(self, catalog_name) -> tuple:
         """
         Establishes a connection to the local database if it exists; 
@@ -46,7 +37,6 @@ class Database:
 
         return connection
 
-    # creation of the tables
     def _create_db(self, connection) -> None:
         """
         creates the database file and tables relevat to the STAC
@@ -57,20 +47,11 @@ class Database:
             None
         """
         self.cursor = connection.cursor()
-        # self.cursor.execute("CREATE TABLE catalog(id INTEGER PRIMARY KEY, objectId UNIQUE, title TEXT, description TEXT)")
         self.cursor.execute("CREATE TABLE collection(id INTEGER PRIMARY KEY,objectId UNIQUE, title TEXT)") # , description TEXT
         self.cursor.execute("CREATE TABLE item(id INTEGER PRIMARY KEY, objectId UNIQUE, collection_objectId TEXT)")
         self.cursor.execute("CREATE TABLE asset(id INTEGER PRIMARY KEY, objectId TEXT, item_objectId TEXT, href TEXT, qml TEXT, UNIQUE(objectId, item_objectId))")        
     
-    # single event selection case.
-    # def insert_catalog(self, id, title, description):
-    #     print("insertion in progress for the catalog named :", title)
-    #     self.cursor.execute(f"INSERT INTO catalog VALUES ({id},{title},{description})")
-    #     self.connection.commit()
-
-    # Single entry event. The user only allowed to select a collection from the UI
-    # when the selection is performed on the UI following function needed to be called. 
-    def insert_collection(self, index, title) -> None: # description
+    def insert_collection(self, index, title) -> None:
         """
             Inserts a collection to collection table
             
@@ -84,7 +65,6 @@ class Database:
                             (index, title))
         self.connection.commit()
 
-    # The user allowed to select multiple items which needed to be submit into db 
     def insert_items(self, ids, collection_id) -> None:
         """
             Inserts items into item table
@@ -95,10 +75,7 @@ class Database:
             Returns:
                 None
         """
-        # multiple id for item
-        # single id for collection_id
         data = [(id, collection_id) for id in ids]
-        # print(data)
         self.cursor.executemany("INSERT OR IGNORE INTO item (objectId, collection_objectId) VALUES(?,?)", data)
         self.connection.commit()
 
@@ -114,14 +91,6 @@ class Database:
 
         self.cursor.executemany("INSERT OR IGNORE INTO asset (item_objectId, objectId, href, qml) VALUES(?,?,?,?)", asset_data)
         self.connection.commit()
-
-    # def insert_assets(self, ids, item_id, hrefs):
-    #     # multiple id for assets
-    #     # single id for the items that assets belong to
-    #     data = [(id, item_id, href) for id, href in zip(ids, hrefs)]
-    #     self.cursor.executemany("INSERT OR IGNORE INTO asset VALUES(?,?,?)", data)
-    #     self.connection.commit()
-
 
     def get_collection_by_title(self, title) -> str:
         """
@@ -146,18 +115,6 @@ class Database:
         """
         return self.cursor.execute("SELECT title FROM collection ORDER BY title ASC").fetchall()
     
-    def get_all_collection_objectId(self) -> List[str]:
-        """
-            Executes a query to get the all collection id from collection table
-            
-            Args: 
-                None
-            Returns:
-                list of the collection ids
-        """
-        return [i[0] for i in self.cursor.execute("SELECT objectId FROM collection").fetchall()]
-    
-    #for search functionality
     def get_collection_by_keyword(self, keyword) -> List[str]:
         """
             Performs a query by relying on a keyword that is provided
@@ -167,7 +124,7 @@ class Database:
             Returns:
                 list of the titles that have matching characters 
         """
-        title_list = [i[0] for i in self.cursor.execute("SELECT title FROM collection WHERE title LIKE ?",("%"+keyword+"%",)).fetchall()]
+        title_list = [i[0] for i in self.cursor.execute("SELECT title FROM collection WHERE title LIKE ? ORDER BY title ASC",("%"+keyword+"%",)).fetchall()]
         return title_list
 
     def get_item_by_collection_id(self, collection_id) -> List[str]:
@@ -192,50 +149,7 @@ class Database:
                 list of the asset id
         """
         return [i[0] for i in self.cursor.execute(f"SELECT DISTINCT objectId FROM asset WHERE item_objectId IN ({','.join(['?'] * len(item_id))})", item_id).fetchall()]
-        # return self.cursor.execute("SELECT objectId FROM asset item_objectId = ?", (item_id,)).fetchall()
 
-    def get_collections(self) -> tuple:
-        """
-            Performs query to db and gets the title and id of 
-            the collection in ascending order respect to the title
-
-            Args: 
-                None
-            Returns: 
-                Tuple of the sets that contains title and id of the collections 
-        """
-        return self.cursor.execute("SELECT title, objectId FROM collection ORDER BY title ASC").fetchall()
-    
-    def get_collection_titles_ordered(self) -> List[str]:
-        """
-            returns the ordered titles of the collection 
-        """
-        return [i[0] for i in self.get_collections()]
-    
-    def get_collection_ids_ordered(self) -> List[str]:
-        """
-            returns the ordered ids of the collections
-            
-            Args:
-                None
-            Returns:
-                id of the collections in a list
-        """
-        return [i[1] for i in self.get_collections()]
-    
-    def get_value_from_table(self, tablename, fieldname, fieldvalue) -> List[str]:
-        """
-            Performs a query of a table by specifing the field name
-
-            Args:
-                tablename (str): name of the table one of the following collection/item/asset
-                fieldname (str): name of the column exist for the table like objectId, title, href, or qml
-                fieldvalue (str): the desired value of the fieldname to filtered
-            Returns:
-                list of strings as a result of the search
-        """
-        return [i[0] for i in self.cursor.execute(f"SELECT {fieldname} FROM {tablename} WHERE {fieldname} = ?", (fieldvalue,)).fetchall()]
-    
     def get_data_from_asset(self, items, assets):
         """
             Makes a query using assets and items from asset table
@@ -254,67 +168,3 @@ class Database:
             ORDER BY item_objectId ASC
         """
         return self.cursor.execute(query, assets + items).fetchall()
-
-    def delete_value_from_table(self, tablename, fieldname, fieldvalue) -> None:
-        """
-            Removes the entries that is specified/filtered
-
-            Args:
-                tablename (str): name of the table one of the following collection/item/asset
-                fieldname (str): name of the column exist for the table like objectId, title, href, or qml
-                fieldvalue (str): the desired value of the fieldname to filtered
-
-        """
-
-        if type(fieldvalue) is list:
-            for fv in fieldvalue:
-                self.cursor.execute(f"DELETE FROM {tablename} WHERE {fieldname} = ?", (fv,))
-            else:
-                self.cursor.execute(f"DELETE FROM {tablename} WHERE {fieldname} = ?", (fieldvalue,))
-        self.connection.commit()
-
-    def flush_collection(self) -> None:
-        """
-            Deletes the all entries from the collection table
-
-            Args:
-                None
-            Returns:
-                None
-        """
-        self.cursor.execute("DELETE FROM collection")
-
-    def flush_item(self) -> None:
-        """
-            Deletes the all entries from the item table
-
-            Args:
-                None
-            Returns:
-                None
-        """
-        self.cursor.execute("DELETE FROM item")
-
-    def flush_asset(self) -> None:
-        """
-            Deletes the all entries from the asset table
-
-            Args:
-                None
-            Returns:
-                None
-        """
-        self.cursor.execute("DELETE FROM asset")
-
-    def flush_all(self):
-        """
-            Deletes the all entries from the all tables
-
-            Args:
-                None
-            Returns:
-                None
-        """
-        self.flush_collection()
-        self.flush_item()
-        self.flush_asset()
