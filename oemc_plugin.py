@@ -353,11 +353,7 @@ class OemcStac:
             item_thread.result.connect(self.listing_thread_items)
 
     def listing_thread_items(self, args):
-        # cache_collect_id = self.database.get_item_by_collection_id(self.current_collection_id())
-        # if (args != cache_collect_id):
         self.dlg.listItems.addItems(args)
-            # delete the records have missmatch with the cache
-        #    self.database.delete_value_from_table("item", "collection_objectId", self.current_collection_id())
         self.database.insert_items(args, self.current_collection_id())
 
     def current_items(self):
