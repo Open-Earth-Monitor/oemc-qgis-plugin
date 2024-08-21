@@ -381,7 +381,7 @@ class OemcStac:
 
     def listing_thread_asset(self, args):
         self._clear_ui(['asset'])
-        self.dlg.listAssets.addItems(list(set(args)))
+        self.dlg.listAssets.addItems(sorted(list(set(args))))
         hypertext_thread = HypertextThread(
             self.current_url(),
             self.current_collection_id(),
