@@ -30,22 +30,23 @@ from .resources import *
 # Import the code for the dialog
 from .oemc_plugin_dialog import OemcStacDialog
 import os.path
+import os
 
-# iniital settings for the PYSTAC and STAC_CLIENT
 from pathlib import Path
 import sys
+import os 
 sys.path.append(str(Path(__file__).parents[0])+'/src') # findable lib path
-from pystac_client.client import Client
+
+from .cache import Database
+
+from .threads import CatalogThread, ItemThread, AssetThread, HypertextThread, RegisterDataThread
 
 #importing the QT libs to control ui
-from qgis.core import QgsProject, QgsRasterLayer, QgsTask, QgsApplication
-from qgis.PyQt.QtCore import QRunnable, Qt, QThreadPool
+from qgis.core import QgsProject, QgsApplication
+from qgis.PyQt.QtCore import Qt, QThreadPool
 
-from qgis.PyQt.QtCore import Qt, pyqtSignal
-from qgis.PyQt.QtXml import QDomDocument
+from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import QListWidget
-# to access the qml files on the fly
-from urllib.request import urlopen
 
 
 class OemcStac:
@@ -92,6 +93,7 @@ class OemcStac:
             OpenLandMap = "https://s3.eu-central-1.wasabisys.com/stac/openlandmap/catalog.json",
             EcoDataCube = "https://s3.eu-central-1.wasabisys.com/stac/odse/catalog.json"
         )
+        self.task_manager = QgsApplication.taskManager()
 
     # noinspection PyMethodMayBeStatic
     def tr(self, message):
@@ -214,13 +216,8 @@ class OemcStac:
             self.dlg = OemcStacDialog()
 
             # creating some variable to handle the state of the plugin
-            self._collection_meta = None
-            self._catalog = None,
-            self._all_items = None
-            self._colors = None
-            self._a_collection = None
-            self._query_keys = dict()
-            self._inserted = dict()
+            
+            
             self.thread_pool = QThreadPool().globalInstance()
             self.thread_pool.setMaxThreadCount(int(self.thread_pool.maxThreadCount()/2))
 
@@ -233,6 +230,8 @@ class OemcStac:
             self.dlg.listCatalog.addItem("") # extra space for visual concerns
             self.dlg.listCatalog.addItems(list(self.oemc_stacs.keys()))
             self.dlg.addLayers.setEnabled(False)
+            self.dlg.clearCache.setEnabled(False)
+            self.dlg.searchBox.setEnabled(False)
 
         # functionalities
         # change on the selection of the catalog will update the
@@ -240,7 +239,8 @@ class OemcStac:
         self.dlg.listCatalog.currentIndexChanged.connect(self.catalog_task_handler)
         # based on the selection from collections this will trigered
         # following the selection this will fills the listItems
-        self.dlg.listCollection.itemClicked.connect(self.taskhandler_items) 
+        # self.dlg.listCollection.itemClicked.connect(self.taskhandler_items)
+        self.dlg.listCollection.itemClicked.connect(self.item_task_handler)
         # this will fills the listAssets with unique assets
         self.dlg.listItems.itemClicked.connect(self.asset_task_handler)
         # this will set selected variable for seleceted assets
@@ -249,9 +249,9 @@ class OemcStac:
         # self.dlg.addStrategy.addItems(self.strategies)
         # finally some one is going to push the addLayers button
 
-        self.dlg.addLayers.clicked.connect(self.add_layers_in_parallel) # add_layers) # #
-        self.dlg.progressBar.reset()
-        self.dlg.progressBar.setTextVisible(True)
+        self.dlg.addLayers.clicked.connect(self.register_dataset)
+        self.dlg.clearCache.clicked.connect(self.handle_cache)
+        self.dlg.searchBox.textChanged.connect(self.handle_search)
         # show the dialog
         self.dlg.show()
         # Run the dialog event loop
@@ -261,301 +261,164 @@ class OemcStac:
         #     # Do something useful here - delete the line containing pass and
         #     # substitute with your code.
         #     pass
-    
-    def catalog_task_handler(self, index):
-        self.dlg.listCollection.clear()
-        self.dlg.listItems.clear()
-        self.dlg.listAssets.clear()
-        self.dlg.addLayers.setEnabled(False)
 
-        self.main_url = list(self.oemc_stacs.values())[index-1]
+    def _clear_ui(self, params:list) -> None:
+        if ('all' in params ) or ('item' in params):
+            self.dlg.listItems.clear()
 
+        if ('all' in params ) or ('asset' in params):
+            self.dlg.listAssets.clear()
 
-        globals()["access_catalog"] = taskCatalog(self.main_url)
-        QgsApplication.taskManager().addTask(globals()["access_catalog"])
-        globals()["access_catalog"].result.connect(self.listing_collection)
-        globals()["access_catalog"].catalog.connect(self.handling_catalog)
+        if ('all' in params ) or ('collection' in params):
+            self.dlg.listCollection.clear()
 
-    def handling_catalog(self, catalog_object):
-        self._catalog = catalog_object
+    def handle_cache(self):
+        db_file = f"{os.path.dirname(__file__)}/db/{self.dlg.listCatalog.currentText()}.db"
+        if os.path.isfile(db_file):
+            os.remove(db_file)
+        self.dlg.searchBox.clear()
+        self.dlg.listCatalog.setCurrentIndex(0)
+        self._clear_ui(['all'])
+        self.dlg.searchBox.setEnabled(False)
 
-    def listing_collection(self, algo_out):
-        self._collection_meta = algo_out
-        self.dlg.listCollection.addItems(sorted(algo_out['title']))
+        self.dlg.clearCache.setEnabled(False)
 
-    def taskhandler_items(self):
-        self.dlg.listItems.clear()
-        self.dlg.listAssets.clear()
-        self.dlg.addLayers.setEnabled(False)
-        globals()['select_collection'] = listSelection(self.dlg.listCollection)
-        QgsApplication.taskManager().addTask(globals()['select_collection'])
-        globals()['select_collection'].result.connect(self.listing_items)
-
-    def listing_items(self, arg):
-        ind = self._collection_meta['title'].index(
-            sorted(self._collection_meta['title'])[arg[0]]
-        )
-        self._a_collection = self._collection_meta['index'][ind]
-
-        globals()["listing_items"] = taskItemListing(ind, self._collection_meta, self._catalog)
-        QgsApplication.taskManager().addTask(globals()["listing_items"])
-        globals()["listing_items"].result.connect(self.listhandler_items)
-
-    def listhandler_items(self, namelist):
-        self.dlg.listItems.addItems(namelist)
-        self._all_items = namelist
-
-    def asset_task_handler(self):
-        self.dlg.listAssets.clear()
-        self.dlg.addLayers.setEnabled(False)
-        globals()['selecting_items'] = listSelection(self.dlg.listItems)
-        QgsApplication.taskManager().addTask(globals()['selecting_items'])
-        globals()['selecting_items'].result.connect(self.listing_assets)
-        globals()['selecting_items'].result.connect(self.handle_styles)
-
-
-    def listing_assets(self, selectedItems):
-        self.dlg.listAssets.clear()
-        globals()['listing_assets'] = taskAssetListing(
-            self._catalog,
-            self._a_collection,
-            self._all_items,
-            selectedItems
-        )
-        QgsApplication.taskManager().addTask(globals()['listing_assets'])
-        globals()['listing_assets'].result.connect(self.listhandler_assets)
+    def handle_search(self, text):
+        self._clear_ui(['all'])
+        if text == ' ':
+            self.dlg.listCollection.addItems(
+                self.database.get_all_collection_names()
+            )
+        else:
+            self.dlg.listCollection.addItems(
+                self.database.get_collection_by_keyword(text)
+            )
         
+    def _block_button(self):
+        self.dlg.addLayers.setEnabled(False)
+    
+    def catalog_task_handler(self, _):
+        """
+        This function manages Catalog information in the UI.
+        """
+        # clean the ui and diable the add button
+        self._clear_ui(['all'])
+        self._block_button()
 
-    def handle_styles(self, selectedItems):
-        globals()['resolve_style'] = taskStyleResolver(
-            self._catalog,
-            self._a_collection,
-            self._all_items,
-            selectedItems
+        selected_catalogname = self.dlg.listCatalog.currentText()
+        if selected_catalogname != "":
+            self.database = Database(selected_catalogname)
+            
+        # check cache exist or not
+        collection_names = [i[0] for i in self.database.get_all_collection_names()]
+        if collection_names != []:
+            self.dlg.listCollection.addItems(collection_names)
+        else:
+            catalog_thread = CatalogThread(self.current_url())
+            self.task_manager.addTask(catalog_thread)
+            catalog_thread.result.connect(self.listing_thread_collection)
+        self.dlg.clearCache.setEnabled(True)
+        self.dlg.searchBox.setEnabled(True)
+
+    def listing_thread_collection(self, arg):
+        self._clear_ui(['all']) # clean the ui
+        # self.database.flush_all() # clean the cache
+        self.dlg.listCollection.addItems(list(arg.keys())) # fill the ui
+        # create the cache
+        for title, id in arg.items():
+            self.database.insert_collection(id, title)
+
+    def current_url(self):
+        name = self.dlg.listCatalog.currentText()
+        if name != "":
+            return self.oemc_stacs[name]
+
+    def current_collection_id(self):
+        return self.database.get_collection_by_title(self.dlg.listCollection.currentItem().text())
+
+    def current_collection_name(self):
+        return self.dlg.listCollection.currentItem().text()
+    
+    def item_task_handler(self, _):
+        # clean the ui and block the button
+        self._clear_ui(['item','asset'])
+        self._block_button()
+
+        items_cache = self.database.get_item_by_collection_id(self.current_collection_id())
+        if items_cache != []:
+            self.dlg.listItems.addItems(items_cache)
+        else:
+            item_thread = ItemThread(self.current_url(), self.current_collection_id())
+            self.task_manager.addTask(item_thread)
+            item_thread.result.connect(self.listing_thread_items)
+
+    def listing_thread_items(self, args):
+        self.dlg.listItems.addItems(args)
+        self.database.insert_items(args, self.current_collection_id())
+
+    def current_items(self):
+        return [i.text() for i in self.dlg.listItems.selectedItems()]
+
+    def all_items(self):
+        return [self.dlg.listItems.item(i).text() for i in range(self.dlg.listItems.count())]
+        
+    def asset_task_handler(self,_):
+        # clean the ui and block the button
+        self._clear_ui(['asset'])
+        self._block_button()
+
+        asset_cache = self.database.get_asset_by_item_id(self.current_items())
+        if asset_cache != []:
+            self.dlg.listAssets.addItems(asset_cache)
+        else:
+            asset_thread = AssetThread(
+                self.current_url(),
+                self.current_collection_id(),
+                self.all_items()
+            )
+            self.task_manager.addTask(asset_thread)
+            asset_thread.result.connect(self.listing_thread_asset)
+
+    def listing_thread_asset(self, args):
+        self._clear_ui(['asset'])
+        self.dlg.listAssets.addItems(sorted(list(set(args))))
+        hypertext_thread = HypertextThread(
+            self.current_url(),
+            self.current_collection_id(),
+            self.all_items(),
+            args
         )
-        QgsApplication.taskManager().addTask(globals()["resolve_style"])
-        globals()['resolve_style'].result.connect(self.handling_colors)
+        self.task_manager.addTask(hypertext_thread)
+        hypertext_thread.result.connect(self.database.insert_assets)
 
-    def listhandler_assets(self,givenlist):
-        self.dlg.listAssets.addItems(givenlist)
-        self._all_assets = givenlist
 
-    def handling_colors(self, given_cc):
-        self._colors = given_cc
+    def current_assets(self):
+        return [i.text() for i in self.dlg.listAssets.selectedItems()]
 
     def selecting_assets(self):
         self.dlg.addLayers.setEnabled(True)
 
-    
-    def add_layers_in_parallel(self):
-        def get_selected_asset(passedArg):
-            self._query_keys['assets'] = [self._all_assets[i] for i in passedArg]
+    def register_dataset(self):
+        data = self.database.get_data_from_asset(self.current_items(), self.current_assets())
+        collection_name = self.current_collection_name()
+        collection_tree = QgsProject.instance().layerTreeRoot().findGroup(collection_name)
+        if collection_tree is None:
+            collection_tree = QgsProject.instance().layerTreeRoot().addGroup(collection_name)
+        for i, d in enumerate(data):
+            item_tree = collection_tree.findGroup(d[0])
+            if item_tree is None:
+                item_tree = collection_tree.addGroup(d[0])
+            data_registerer = RegisterDataThread(d, item_tree)
+            self.thread_pool.start(data_registerer)
+            item_tree.setExpanded(False)
+            item_tree.setItemVisibilityChecked(False)
+        collection_tree.setExpanded(False)
+        collection_groups = QgsProject.instance().layerTreeRoot().findGroups()
+        if len(collection_groups) == 1:
+            collection_groups[0].findGroups()[0].setItemVisibilityChecked(True)
+        else:
+            collection_index = [i.name() for i in collection_groups].index(self.current_collection_name())
+            QgsProject.instance().layerTreeRoot().findGroups()[collection_index].findGroups()[0].setItemVisibilityChecked(True)
 
-        def get_selected_items(passedArg):
-            self._query_keys["items"] =  [self._all_items[i] for i in passedArg]
-
-            total_len = len(self._query_keys['assets']) * len(self._query_keys['items'])
-            self.dlg.progressBar.setMaximum(total_len)
-
-            call_parallel_implementation()
-
-            self.dlg.progressBar.reset()
-
-
-        globals()['asset_selection'] = listSelection(self.dlg.listAssets)
-        QgsApplication.taskManager().addTask(globals()['asset_selection'])
-        globals()['asset_selection'].result.connect(get_selected_asset)
-
-        globals()['item_selection'] = listSelection(self.dlg.listItems)
-        QgsApplication.taskManager().addTask(globals()['item_selection'])
-        globals()['item_selection'].result.connect(get_selected_items)
-
-        def call_parallel_implementation():
-            total_count = len(self._query_keys['assets']) * len(self._query_keys['items'])
-            count = 0
-            self.dlg.progressBar.setMaximum(total_count)
-            print(total_count)
-            for asset in self._query_keys['assets']:
-                for pos_item, item in enumerate(self._query_keys['items']):
-                    col_name = self._catalog.get_collection(self._a_collection).title
-                    col_tree = QgsProject.instance().layerTreeRoot().findGroup(col_name)
-                    if col_tree:
-                        item_tree = col_tree.findGroup(item)
-                        
-                        if item_tree:
-                            if asset not in self._inserted[self._a_collection][item]:
-                                self._inserted[self._a_collection][item].append(asset)
-                                runnable = addRasterParalel(asset, item, self._a_collection,self._catalog, item_tree, self._colors.get(self._a_collection))
-                                self.thread_pool.start(runnable)
-                        else:
-                            item_tree = col_tree.addGroup(item)
-                            self._inserted[self._a_collection][item] = [asset]
-                            
-                            runnable = addRasterParalel(asset, item, self._a_collection,self._catalog, item_tree, self._colors.get(self._a_collection))
-                            self.thread_pool.start(runnable)
-                        count += 1
-                        self.dlg.progressBar.setValue(count)
-                    else:
-                        col_tree = QgsProject.instance().layerTreeRoot().addGroup(col_name)
-                        item_tree = col_tree.addGroup(item)
-                        self._inserted[self._a_collection] = dict()
-                        self._inserted[self._a_collection][item] = [asset]
-                        
-                        runnable = addRasterParalel(asset, item, self._a_collection,self._catalog, item_tree, self._colors.get(self._a_collection))
-                        self.thread_pool.start(runnable)
-                        count += 1
-                        self.dlg.progressBar.setValue(count)
-                    
-                    
-                    item_tree.setExpanded(False)
-                    if pos_item != 0:
-                        item_tree.setItemVisibilityChecked(False)
-            col_tree.setExpanded(False)
-
-class taskCatalog(QgsTask):
-    result = pyqtSignal(dict)
-    catalog = pyqtSignal(object)
-
-    def __init__(self, given_url):
-        super().__init__('OEMC STAC: listing collections', QgsTask.CanCancel)
-        self.url = given_url
-        self.title = []
-        self.index = []
-
-    def run(self):
-        self.cat = Client.open(self.url)
-        for i in self.cat.get_collections():
-            self.title.append(i.title)
-            self.index.append(i.id)
-        return True
-
-    def finished(self, result):
-        if result:
-            self.result.emit(dict(title=self.title, index=self.index))
-            self.catalog.emit(self.cat)
-
-    def cancel(self):
-        super().cancel()
-
-class listSelection(QgsTask):
-    result = pyqtSignal(list)
-
-    def __init__(self, ui_element):
-        super().__init__("OEMC STAC: listing items part-i", QgsTask.CanCancel)
-        self.ind = []
-        self.ui = ui_element
-
-    def run(self):
-        for i in self.ui.selectedItems():
-            self.ind.append(self.ui.indexFromItem(i).row())
-        return True
-
-    def finished(self,result):
-        if result:
-            self.result.emit(self.ind)
-
-    def cancel(self): super().cancel()
-
-class taskItemListing(QgsTask):
-    result = pyqtSignal(list)
-    def __init__(self, index, collection_meta, catalog):
-        super().__init__("OEMC STAC: listing items part-ii")
-        self.index = index
-        self.cllct_meta = collection_meta
-        self.catalog = catalog
-        self._items = None
-    def run(self):
-        _items = self.catalog.get_collection(
-            self.cllct_meta['index'][self.index]
-        ).get_items()
-        self._items = [i.id for i in _items]
-        return True
-    def finished(self, result):
-        if result:
-            self.result.emit(self._items)
-    def cancel(self):
-        super().cancel()
-
-class taskAssetListing(QgsTask):
-    result = pyqtSignal(list)
-    def __init__(self, catalog, collectionid, item_id, selecteditems):
-        super().__init__('OEMC STAC: listing assets')
-        self.catalog = catalog
-        self.collection=collectionid
-        self.item_id = item_id
-        self.selecteditems = selecteditems
-        self.unique = []
-        self.ccodes = dict()
-
-    def run(self):
-        for i in self.selecteditems:
-            item = self.item_id[i]
-            # accessing to the assets
-            memo = self.catalog.get_collection(self.collection).get_item(item).to_dict()['assets']
-            for k in memo.keys():
-                if not  ((k.endswith('view')) or (k.endswith('nail')) or (k.endswith('sld')) or (k.endswith('qml'))):
-                    if k not in self.unique:
-                        self.unique.append(k)
-        return True
-    def finished(self,result):
-        if result:
-            self.result.emit(self.unique)
-
-    def cancel(self): super().cancel()
-
-class taskStyleResolver(QgsTask):
-    result = pyqtSignal(dict)
-    def __init__(self, catalog, collectionid, item_id, selecteditems):
-        super().__init__('OEMC STAC: resolving styles')
-        self.catalog = catalog
-        self.collection=collectionid
-        self.item_id = item_id
-        self.selecteditems = selecteditems
-        self.unique = []
-        self.ccodes = dict()
-
-    def run(self):
-        for i in self.selecteditems:
-            item = self.item_id[i]
-            # accessing to the assets
-            memo = self.catalog.get_collection(self.collection).get_item(item).to_dict()['assets']
-            for k in memo.keys():
-                if (k.endswith('qml')):
-                    style_url = memo['qml']['href']
-                    if self.collection not in self.ccodes.keys():
-                        r_file = urlopen(style_url)
-                        stylebytes = r_file.read()
-                        doc = QDomDocument()
-                        doc.setContent(stylebytes)
-                        self.ccodes[self.collection] = doc
-        return True
-
-    def finished(self,result):
-        if result:
-            self.result.emit(self.ccodes)
-
-    def cancel(self): super().cancel()
-
-class addRasterParalel(QRunnable):
-    result = pyqtSignal()
-    def __init__(self, asset_id, item_id, collection_id, catalog_object, place, colors):
-        super().__init__()
-        self.asset_id = asset_id
-        self.item_id = item_id
-        self.collection_id = collection_id
-        self.catalog = catalog_object
-        self.place = place
-        self.colorschema = colors
-
-    def run(self):
-        raster_remote = '/vsicurl/' + self.catalog.get_collection(self.collection_id).get_item(self.item_id).to_dict()['assets'][self.asset_id]['href']
-        raster_layer = QgsRasterLayer(raster_remote, baseName=self.asset_id)
-
-        if self.colorschema:
-            raster_layer.importNamedStyle(self.colorschema)
-        QgsProject.instance().addMapLayer(mapLayer=raster_layer, addToLegend=False)
-        self.place.addLayer(raster_layer)
-
-    def finished(self, result):
-        if result:
-            self.result.emit()
+# Qt5 documentation
+# https://doc.qt.io/qt-5/qtwidgets-module.html
