@@ -318,6 +318,7 @@ class OemcStac:
             self.task_manager.addTask(catalog_thread)
             catalog_thread.result.connect(self.listing_thread_collection)
         self.dlg.clearCache.setEnabled(True)
+        self.dlg.searchBox.clear()
         self.dlg.searchBox.setEnabled(True)
 
     def listing_thread_collection(self, arg):
