@@ -1,12 +1,14 @@
 # This file contains metadata for your plugin.
 
-# This file should be included when you package your plugin.# Mandatory items:
+# This file should be included when you package your plugin.
+
+# Mandatory items:
 
 [general]
 name=Oemc Plugin
 qgisMinimumVersion=3.0
 description=This plugin provides easy access to OEMC STAC catalog
-version=0.1
+version=0.2
 author=OpenGeoHub
 email=murat.sahin@opengeohub.org
 
@@ -25,7 +27,7 @@ hasProcessingProvider=no
 # Tags are comma separated with spaces allowed
 tags=openeo, raster, stac, cog 
 
-homepage=https://earthmonitor.org/
+homepage=https://github.com/Open-Earth-Monitor/oemc-qgis-plugin
 category=Plugins
 icon=icon.png
 # experimental flag
