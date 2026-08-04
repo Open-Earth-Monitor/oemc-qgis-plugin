@@ -90,8 +90,10 @@ class OemcStac:
         # saving the stac names and catalog urls as a variable
         self.main_url = None
         self.oemc_stacs = dict(
-            OpenLandMap = "https://s3.eu-central-1.wasabisys.com/stac/openlandmap/catalog.json",
-            EcoDataCube = "https://s3.eu-central-1.wasabisys.com/stac/odse/catalog.json"
+            OpenLandMap = "https://stac.opengeohub.org/v1/cat/openlandmap",
+            LandMetric = "https://stac.opengeohub.org/v1/cat/landmetric",
+            EcoDataCube = "https://stac.opengeohub.org/v1/cat/ecodatacube",
+            OEMC = "https://s3.eu-central-1.wasabisys.com/stac/oemc/catalog.json"
         )
         self.task_manager = QgsApplication.taskManager()
 

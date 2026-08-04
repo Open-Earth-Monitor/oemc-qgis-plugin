@@ -22,10 +22,7 @@ class CatalogThread(QgsTask):
 
     def run(self) -> bool:
         catalog = Client.open(self.url)
-        for i in catalog.links:
-            if i.rel == 'child':
-                self.data[i.title] = i.target.split('/')[1]
-                
+        self.data = {c.title or c.id: c.id for c in catalog.get_collections()}
         return True
     def finished(self, result: bool) -> None:
         if result:
