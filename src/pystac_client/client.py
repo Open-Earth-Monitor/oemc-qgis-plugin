@@ -89,12 +89,14 @@ class Client(pystac.Catalog):
         """
         if self._stac_io.conforms_to(ConformanceClasses.COLLECTIONS):
             url = f"{self.get_self_href()}/collections/{collection_id}"
-            collection = CollectionClient.from_dict(self._stac_io.read_json(url), root=self)
-            return collection
-        else:
-            for col in self.get_collections():
-                if col.id == collection_id:
-                    return col
+            try:
+                collection = CollectionClient.from_dict(self._stac_io.read_json(url), root=self)
+                return collection
+            except APIError:
+                pass
+        for col in self.get_collections():
+            if col.id == collection_id:
+                return col
 
     def get_collections(self) -> Iterable[CollectionClient]:
         """ Get Collections in this Catalog
