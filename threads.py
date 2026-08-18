@@ -30,95 +30,40 @@ class CatalogThread(QgsTask):
 
 class ItemThread(QgsTask):
     """
-        Accesses to the given catalog and collects the id of the items 
-        using given collection id
+        Accesses the given catalog and collects the items and their data
+        assets for the given collection id
 
         Inputs:
             url : url of the catalog
             collection_id: id of the selected collection
-
     """
-    result = pyqtSignal(list)
+    result = pyqtSignal(dict)
 
     def __init__(self, url, collection_id):
         super().__init__("Item event", QgsTask.CanCancel)
         self.url = url
         self.id = collection_id
-        self.item_ids = None
+        self.data = {'items': [], 'assets': []}
 
     def run(self) -> bool:
         catalog = Client.open(self.url)
-        items = catalog.get_collection(self.id).get_items()
-        self.item_ids = [item.id for item in items]
+        for item in catalog.get_collection(self.id).get_items():
+            self.data['items'].append(item.id)
+            assets = item.to_dict()['assets']
+            qml_href = self._qml_href(assets)
+            for asset_id, asset in assets.items():
+                if 'data' in (asset.get('roles') or []):
+                    self.data['assets'].append((item.id, asset_id, asset['href'], qml_href))
         return True
-    
-    def finished(self, result: bool) -> None:
-        if result:
-            self.result.emit(self.item_ids)
 
-class AssetThread(QgsTask):
-    """
-        Inputs:
-            url : url of the catalog
-            collection_id: id of the selected collection
-            item_ids: all items that is nested under the selected collection
-            selected_item_indexes: indexes of the selected items
-    """
-    result = pyqtSignal(list)
+    @staticmethod
+    def _qml_href(assets):
+        for asset in assets.values():
+            if 'style' in (asset.get('roles') or []) and \
+                    str(asset.get('type', '')).startswith('application/vnd.QGIS.qml'):
+                return asset['href']
+        return None
 
-    def __init__(self, url, collection_id, selected_items):
-        super().__init__("Asset event", QgsTask.CanCancel)
-        self.url = url
-        self.collection_id = collection_id
-        self.item_ids = selected_items
-        self.unique = []
-
-    def run(self) -> bool:
-        catalog = Client.open(self.url)
-        collection = catalog.get_collection(self.collection_id)
-
-        for item_id in self.item_ids:
-            assets = collection.get_item(item_id).to_dict()['assets']
-            for asset in assets.keys():
-                if not (
-                    asset.endswith('view') or
-                    asset.endswith('nail') or
-                    asset.endswith('sld') or
-                    asset.endswith('qml')
-                ):
-                    if asset not in self.unique:
-                        self.unique.append(asset)
-            return True
-
-    def finished(self, result: bool) -> None:
-        if result:
-            self.result.emit(self.unique)
-
-class HypertextThread(QgsTask):
-    result = pyqtSignal(list)
-    def __init__(self, url, collection_id, item_ids, asset_ids):
-        super().__init__("HyperText event", QgsTask.CanCancel)
-
-        self.url = url
-        self.collection_id = collection_id
-        self.item_ids = item_ids
-        self.asset_ids = asset_ids
-        self.data = []
-
-    def run(self) -> bool:
-        catalog = Client.open(self.url)
-        collection = catalog.get_collection(self.collection_id)
-        for item_id in self.item_ids:
-            assets = collection.get_item(item_id).to_dict()['assets']
-            try:
-                qml_file = assets['qml']['href']
-            except KeyError:
-                qml_file = None
-            for asset_id in self.asset_ids:
-                href = assets[asset_id]['href']
-                self.data.append((item_id, asset_id, href, qml_file))
-        return True
-    
     def finished(self, result: bool) -> None:
         if result:
             self.result.emit(self.data)

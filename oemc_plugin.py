@@ -39,7 +39,7 @@ sys.path.append(str(Path(__file__).parents[0])+'/src') # findable lib path
 
 from .cache import Database
 
-from .threads import CatalogThread, ItemThread, AssetThread, HypertextThread, RegisterDataThread
+from .threads import CatalogThread, ItemThread, RegisterDataThread
 
 #importing the QT libs to control ui
 from qgis.core import QgsProject, QgsApplication
@@ -347,53 +347,32 @@ class OemcStac:
         self._clear_ui(['item','asset'])
         self._block_button()
 
-        items_cache = self.database.get_item_by_collection_id(self.current_collection_id())
-        if items_cache != []:
+        collection_id = self.current_collection_id()
+        items_cache = self.database.get_item_by_collection_id(collection_id)
+        assets_cache = self.database.get_asset_by_collection_id(collection_id)
+        if items_cache != [] and assets_cache != []:
             self.dlg.listItems.addItems(items_cache)
         else:
-            item_thread = ItemThread(self.current_url(), self.current_collection_id())
+            item_thread = ItemThread(self.current_url(), collection_id)
             self.task_manager.addTask(item_thread)
             item_thread.result.connect(self.listing_thread_items)
 
     def listing_thread_items(self, args):
-        self.dlg.listItems.addItems(args)
-        self.database.insert_items(args, self.current_collection_id())
+        self.dlg.listItems.addItems(args['items'])
+        self.database.insert_items(args['items'], self.current_collection_id())
+        self.database.insert_assets(args['assets'])
 
     def current_items(self):
         return [i.text() for i in self.dlg.listItems.selectedItems()]
-
-    def all_items(self):
-        return [self.dlg.listItems.item(i).text() for i in range(self.dlg.listItems.count())]
         
     def asset_task_handler(self,_):
         # clean the ui and block the button
         self._clear_ui(['asset'])
         self._block_button()
 
-        asset_cache = self.database.get_asset_by_item_id(self.current_items())
-        if asset_cache != []:
-            self.dlg.listAssets.addItems(asset_cache)
-        else:
-            asset_thread = AssetThread(
-                self.current_url(),
-                self.current_collection_id(),
-                self.all_items()
-            )
-            self.task_manager.addTask(asset_thread)
-            asset_thread.result.connect(self.listing_thread_asset)
-
-    def listing_thread_asset(self, args):
-        self._clear_ui(['asset'])
-        self.dlg.listAssets.addItems(sorted(list(set(args))))
-        hypertext_thread = HypertextThread(
-            self.current_url(),
-            self.current_collection_id(),
-            self.all_items(),
-            args
+        self.dlg.listAssets.addItems(
+            sorted(set(self.database.get_asset_by_item_id(self.current_items())))
         )
-        self.task_manager.addTask(hypertext_thread)
-        hypertext_thread.result.connect(self.database.insert_assets)
-
 
     def current_assets(self):
         return [i.text() for i in self.dlg.listAssets.selectedItems()]

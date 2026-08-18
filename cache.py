@@ -150,6 +150,19 @@ class Database:
         """
         return [i[0] for i in self.cursor.execute(f"SELECT DISTINCT objectId FROM asset WHERE item_objectId IN ({','.join(['?'] * len(item_id))})", item_id).fetchall()]
 
+    def get_asset_by_collection_id(self, collection_id) -> List[str]:
+        """
+            Gets the asset ids cached for all items of the given collection
+
+            Args:
+                collection_id (str): collection id
+            Returns:
+                list of the asset ids cached under the given collection
+        """
+        return [i[0] for i in self.cursor.execute(
+            "SELECT DISTINCT a.objectId FROM asset a JOIN item i ON a.item_objectId = i.objectId WHERE i.collection_objectId = ?",
+            (collection_id,)).fetchall()]
+
     def get_data_from_asset(self, items, assets):
         """
             Makes a query using assets and items from asset table
