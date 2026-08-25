@@ -1,8 +1,6 @@
-from qgis.PyQt.QtXml import QDomDocument
-from qgis.PyQt.QtCore import pyqtSignal, QRunnable
-from qgis.core import QgsTask, QgsRasterLayer, QgsProject
+from qgis.PyQt.QtCore import pyqtSignal
+from qgis.core import QgsTask
 
-from urllib.request import urlopen
 from pystac_client.client import Client
 
 class CatalogThread(QgsTask):
@@ -67,26 +65,3 @@ class ItemThread(QgsTask):
     def finished(self, result: bool) -> None:
         if result:
             self.result.emit(self.data)
-
-class RegisterDataThread(QRunnable):
-    result = pyqtSignal()
-
-    def __init__(self, data, item_tree):
-        super().__init__()
-        self.data = data
-        self.item_tree = item_tree
-
-    def run(self):
-        data_path = f"/vsicurl/{self.data[2]}"
-        raster_layer = QgsRasterLayer(data_path, baseName=self.data[1])
-        if self.data[1] not in [i.name() for i in self.item_tree.findLayers()]:
-            if self.data[3] is not None:
-                doc = QDomDocument()
-                doc.setContent(urlopen(self.data[3]).read())
-                raster_layer.importNamedStyle(doc)
-            QgsProject.instance().addMapLayer(mapLayer=raster_layer, addToLegend=False)
-            self.item_tree.addLayer(raster_layer)
-
-    def finished(self, result):
-        if result:
-            self.result.emit()

@@ -39,14 +39,14 @@ sys.path.append(str(Path(__file__).parents[0])+'/src') # findable lib path
 
 from .cache import Database
 
-from .threads import CatalogThread, ItemThread, RegisterDataThread
+from .threads import CatalogThread, ItemThread
 
 #importing the QT libs to control ui
-from qgis.core import QgsProject, QgsApplication
-from qgis.PyQt.QtCore import Qt, QThreadPool
-
+from qgis.core import QgsProject, QgsApplication, QgsRasterLayer
 from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtXml import QDomDocument
 from qgis.PyQt.QtWidgets import QListWidget
+from urllib.request import urlopen
 
 
 class OemcStac:
@@ -218,10 +218,6 @@ class OemcStac:
             self.dlg = OemcStacDialog()
 
             # creating some variable to handle the state of the plugin
-            
-            
-            self.thread_pool = QThreadPool().globalInstance()
-            self.thread_pool.setMaxThreadCount(int(self.thread_pool.maxThreadCount()/2))
 
             # defining settings for the ui elements on the start
             self.dlg.listCatalog.view().setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
@@ -386,12 +382,26 @@ class OemcStac:
         collection_tree = QgsProject.instance().layerTreeRoot().findGroup(collection_name)
         if collection_tree is None:
             collection_tree = QgsProject.instance().layerTreeRoot().addGroup(collection_name)
-        for i, d in enumerate(data):
+        for d in data:
             item_tree = collection_tree.findGroup(d[0])
             if item_tree is None:
                 item_tree = collection_tree.addGroup(d[0])
-            data_registerer = RegisterDataThread(d, item_tree)
-            self.thread_pool.start(data_registerer)
+            raster_layer = QgsRasterLayer(f"/vsicurl/{d[2]}", baseName=d[1])
+            if not raster_layer.isValid():
+                self.iface.messageBar().pushWarning(
+                    self.tr('OEMC Plugin'), self.tr(f'Could not load {d[1]}: {raster_layer.error().message()}'))
+                continue
+            if d[3] is not None:
+                try:
+                    doc = QDomDocument()
+                    doc.setContent(urlopen(d[3]).read())
+                    raster_layer.importNamedStyle(doc)
+                except Exception as e:
+                    self.iface.messageBar().pushWarning(
+                        self.tr('OEMC Plugin'), self.tr(f'Could not apply style to {d[1]}: {e}'))
+            if d[1] not in [i.name() for i in item_tree.findLayers()]:
+                QgsProject.instance().addMapLayer(mapLayer=raster_layer, addToLegend=False)
+                item_tree.addLayer(raster_layer)
             item_tree.setExpanded(False)
             item_tree.setItemVisibilityChecked(False)
         collection_tree.setExpanded(False)
