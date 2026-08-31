@@ -1,6 +1,7 @@
 from qgis.PyQt.QtCore import pyqtSignal
 from qgis.core import QgsTask
 
+from urllib.request import urlopen
 from pystac_client.client import Client
 
 class CatalogThread(QgsTask):
@@ -68,3 +69,62 @@ class ItemThread(QgsTask):
     def finished(self, result: bool) -> None:
         if result:
             self.result.emit(self.data)
+
+
+class MetadataThread(QgsTask):
+    """
+        Accesses the given catalog and collects the metadata of the selected
+        collection, including the thumbnail of its first item.
+
+        Inputs:
+            url : url of the catalog
+            collection_id: id of the selected collection
+    """
+    result = pyqtSignal(dict)
+
+    def __init__(self, url, collection_id):
+        super().__init__("Metadata event", QgsTask.CanCancel)
+        self.url = url
+        self.collection_id = collection_id
+        self.metadata = None
+
+    def run(self) -> bool:
+        catalog = Client.open(self.url)
+        collection = next((c for c in catalog.get_collections() if c.id == self.collection_id), None)
+        if collection is None:
+            return False
+
+        d = collection.to_dict()
+        extent = d.get('extent') or {}
+        bbox = (extent.get('spatial') or {}).get('bbox') or [[]]
+        temporal = (extent.get('temporal') or {}).get('interval') or [[None, None]]
+
+        self.metadata = {
+            'title': d.get('title') or d.get('id'),
+            'description': d.get('description'),
+            'contact_name': d.get('contact_name'),
+            'contact_email': d.get('contact_email'),
+            'bbox': bbox[0],
+            'temporal': temporal[0],
+            'thumbnail': self._thumbnail_bytes(collection),
+        }
+        return True
+
+    def _thumbnail_bytes(self, collection):
+        try:
+            first = next(iter(collection.get_items()), None)
+        except Exception:
+            return None
+        if first is None:
+            return None
+        for asset in first.to_dict().get('assets', {}).values():
+            if 'thumbnail' in (asset.get('roles') or []):
+                try:
+                    return urlopen(asset['href'], timeout=30).read()
+                except Exception:
+                    return None
+        return None
+
+    def finished(self, result: bool) -> None:
+        if result and self.metadata is not None:
+            self.result.emit(self.metadata)

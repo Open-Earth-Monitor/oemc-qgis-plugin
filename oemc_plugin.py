@@ -28,7 +28,7 @@ from qgis.PyQt.QtWidgets import QAction
 # Initialize Qt resources from file resources.py
 from .resources import *
 # Import the code for the dialog
-from .oemc_plugin_dialog import OemcStacDialog
+from .oemc_plugin_dialog import OemcStacDialog, MetadataDialog
 import os
 import sys
 from pathlib import Path
@@ -37,7 +37,7 @@ sys.path.insert(0, str(Path(__file__).parents[0]) + '/src')  # prefer bundled li
 
 from .cache import Database
 
-from .threads import CatalogThread, ItemThread
+from .threads import CatalogThread, ItemThread, MetadataThread
 
 #importing the QT libs to control ui
 from qgis.core import QgsProject, QgsApplication, QgsRasterLayer
@@ -231,6 +231,7 @@ class OemcStac:
             self.dlg.listItems.itemClicked.connect(self.asset_task_handler)
             self.dlg.listAssets.itemClicked.connect(self.selecting_assets)
             self.dlg.addLayers.clicked.connect(self.register_dataset)
+            self.dlg.showMetadata.clicked.connect(self.metadata_handler)
             self.dlg.clearCache.clicked.connect(self.handle_cache)
             self.dlg.searchBox.textChanged.connect(self.handle_search)
 
@@ -319,6 +320,20 @@ class OemcStac:
 
     def current_collection_name(self):
         return self.dlg.listCollection.currentItem().text()
+
+    def metadata_handler(self):
+        collection_id = self.current_collection_id()
+        if collection_id is None:
+            self.iface.messageBar().pushWarning(
+                self.tr('OEMC Plugin'), self.tr('Select a collection first.'))
+            return
+        thread = MetadataThread(self.current_url(), collection_id)
+        self.task_manager.addTask(thread)
+        thread.result.connect(self.show_metadata_dialog)
+
+    def show_metadata_dialog(self, metadata):
+        dialog = MetadataDialog(metadata, parent=self.dlg)
+        dialog.exec_()
     
     def item_task_handler(self, item):
         # clean the ui and block the button

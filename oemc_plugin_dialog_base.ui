@@ -97,6 +97,19 @@
      </property>
     </widget>
    </item>
+   <item row="6" column="0">
+    <widget class="QPushButton" name="showMetadata">
+     <property name="minimumSize">
+      <size>
+       <width>100</width>
+       <height>0</height>
+      </size>
+     </property>
+     <property name="text">
+      <string>Show Metadata</string>
+     </property>
+    </widget>
+   </item>
    <item row="6" column="1">
     <widget class="QPushButton" name="addLayers">
      <property name="minimumSize">
