@@ -33,7 +33,7 @@ import os
 import sys
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).parents[0]) + '/src')  # findable lib path
+sys.path.insert(0, str(Path(__file__).parents[0]) + '/src')  # prefer bundled libs over user-site packages
 
 from .cache import Database
 

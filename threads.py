@@ -45,7 +45,10 @@ class ItemThread(QgsTask):
 
     def run(self) -> bool:
         catalog = Client.open(self.url)
-        for item in catalog.get_collection(self.id).get_items():
+        collection = next((c for c in catalog.get_collections() if c.id == self.id), None)
+        if collection is None:
+            return False
+        for item in collection.get_items():
             self.data['items'].append(item.id)
             assets = item.to_dict()['assets']
             qml_href = self._qml_href(assets)
