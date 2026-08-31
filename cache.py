@@ -148,6 +148,8 @@ class Database:
             Returns:
                 list of the asset id
         """
+        if not item_id:
+            return []
         return [i[0] for i in self.cursor.execute(f"SELECT DISTINCT objectId FROM asset WHERE item_objectId IN ({','.join(['?'] * len(item_id))})", item_id).fetchall()]
 
     def get_asset_by_collection_id(self, collection_id) -> List[str]:
@@ -173,6 +175,8 @@ class Database:
             Returns:
                 list(tuple) : tuples stores item_id, asset_id href of data and qml of relevant data
         """
+        if not items or not assets:
+            return []
         query = f"""
             SELECT item_objectId, objectId, href, qml
             FROM asset

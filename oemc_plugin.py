@@ -29,13 +29,11 @@ from qgis.PyQt.QtWidgets import QAction
 from .resources import *
 # Import the code for the dialog
 from .oemc_plugin_dialog import OemcStacDialog
-import os.path
 import os
-
-from pathlib import Path
 import sys
-import os 
-sys.path.append(str(Path(__file__).parents[0])+'/src') # findable lib path
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).parents[0]) + '/src')  # findable lib path
 
 from .cache import Database
 
@@ -84,11 +82,7 @@ class OemcStac:
         # Must be set in initGui() to survive plugin reloads
         self.first_start = None
 
-        ############################################
-        # tapping on the project structure to use it
-        self.project_tree = QgsProject.instance().layerTreeRoot() # QgsLayerTree()
-        # saving the stac names and catalog urls as a variable
-        self.main_url = None
+        # catalog names and urls exposed by the plugin
         self.oemc_stacs = dict(
             OpenLandMap = "https://stac.opengeohub.org/v1/cat/openlandmap",
             LandMetric = "https://stac.opengeohub.org/v1/cat/landmetric",
