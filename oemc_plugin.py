@@ -225,34 +225,17 @@ class OemcStac:
             self.dlg.clearCache.setEnabled(False)
             self.dlg.searchBox.setEnabled(False)
 
-        # functionalities
-        # change on the selection of the catalog will update the
-        # listCatalog and fills it with the collection names
-        self.dlg.listCatalog.currentIndexChanged.connect(self.catalog_task_handler)
-        # based on the selection from collections this will trigered
-        # following the selection this will fills the listItems
-        # self.dlg.listCollection.itemClicked.connect(self.taskhandler_items)
-        self.dlg.listCollection.itemClicked.connect(self.item_task_handler)
-        # this will fills the listAssets with unique assets
-        self.dlg.listItems.itemClicked.connect(self.asset_task_handler)
-        # this will set selected variable for seleceted assets
-        self.dlg.listAssets.itemClicked.connect(self.selecting_assets)
-        # this will fills the strategies wit predefined add layer strategies
-        # self.dlg.addStrategy.addItems(self.strategies)
-        # finally some one is going to push the addLayers button
+            # wire ui signals once, so they do not stack on repeated runs
+            self.dlg.listCatalog.currentIndexChanged.connect(self.catalog_task_handler)
+            self.dlg.listCollection.itemClicked.connect(self.item_task_handler)
+            self.dlg.listItems.itemClicked.connect(self.asset_task_handler)
+            self.dlg.listAssets.itemClicked.connect(self.selecting_assets)
+            self.dlg.addLayers.clicked.connect(self.register_dataset)
+            self.dlg.clearCache.clicked.connect(self.handle_cache)
+            self.dlg.searchBox.textChanged.connect(self.handle_search)
 
-        self.dlg.addLayers.clicked.connect(self.register_dataset)
-        self.dlg.clearCache.clicked.connect(self.handle_cache)
-        self.dlg.searchBox.textChanged.connect(self.handle_search)
         # show the dialog
         self.dlg.show()
-        # Run the dialog event loop
-        # result = self.dlg.exec_()
-        # See if OK was pressed
-        # if result:
-        #     # Do something useful here - delete the line containing pass and
-        #     # substitute with your code.
-        #     pass
 
     def _clear_ui(self, params:list) -> None:
         if ('all' in params ) or ('item' in params):
@@ -265,6 +248,8 @@ class OemcStac:
             self.dlg.listCollection.clear()
 
     def handle_cache(self):
+        if hasattr(self, 'database'):
+            self.database.close()
         db_file = f"{os.path.dirname(__file__)}/db/{self.dlg.listCatalog.currentText()}.db"
         if os.path.isfile(db_file):
             os.remove(db_file)
