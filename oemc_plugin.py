@@ -327,17 +327,20 @@ class OemcStac:
             return self.oemc_stacs[name]
 
     def current_collection_id(self):
-        return self.database.get_collection_by_title(self.dlg.listCollection.currentItem().text())
+        item = self.dlg.listCollection.currentItem()
+        if item is None:
+            return None
+        return self.database.get_collection_by_title(item.text())
 
     def current_collection_name(self):
         return self.dlg.listCollection.currentItem().text()
     
-    def item_task_handler(self, _):
+    def item_task_handler(self, item):
         # clean the ui and block the button
         self._clear_ui(['item','asset'])
         self._block_button()
 
-        collection_id = self.current_collection_id()
+        collection_id = self.database.get_collection_by_title(item.text())
         items_cache = self.database.get_item_by_collection_id(collection_id)
         assets_cache = self.database.get_asset_by_collection_id(collection_id)
         if items_cache != [] and assets_cache != []:
@@ -348,8 +351,11 @@ class OemcStac:
             item_thread.result.connect(self.listing_thread_items)
 
     def listing_thread_items(self, args):
+        # ignore results from a collection that is no longer selected
+        if args['collection_id'] != self.current_collection_id():
+            return
         self.dlg.listItems.addItems(args['items'])
-        self.database.insert_items(args['items'], self.current_collection_id())
+        self.database.insert_items(args['items'], args['collection_id'])
         self.database.insert_assets(args['assets'])
 
     def current_items(self):

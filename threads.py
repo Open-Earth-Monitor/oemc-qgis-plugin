@@ -41,7 +41,7 @@ class ItemThread(QgsTask):
         super().__init__("Item event", QgsTask.CanCancel)
         self.url = url
         self.id = collection_id
-        self.data = {'items': [], 'assets': []}
+        self.data = {'collection_id': collection_id, 'items': [], 'assets': []}
 
     def run(self) -> bool:
         catalog = Client.open(self.url)
