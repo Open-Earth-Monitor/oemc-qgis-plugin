@@ -1,5 +1,6 @@
 from qgis.PyQt.QtCore import pyqtSignal
-from qgis.core import QgsTask
+from qgis.PyQt.QtXml import QDomDocument
+from qgis.core import QgsTask, QgsRasterLayer
 
 from urllib.request import urlopen
 from pystac_client.client import Client
@@ -128,3 +129,49 @@ class MetadataThread(QgsTask):
     def finished(self, result: bool) -> None:
         if result and self.metadata is not None:
             self.result.emit(self.metadata)
+
+
+class RegisterLayersTask(QgsTask):
+    """
+        Prepares raster layers off the main thread and emits them so the
+        plugin can register them in the project without freezing the UI.
+
+        Inputs:
+            collection_name: name of the selected collection
+            data: list of tuples (item_id, asset_id, href, qml_href)
+    """
+    result = pyqtSignal(dict)
+
+    def __init__(self, collection_name, data):
+        super().__init__("Add layers", QgsTask.CanCancel)
+        self.collection_name = collection_name
+        self.data = data
+        self.prepared = []
+        self.failed = []
+
+    def run(self) -> bool:
+        total = len(self.data)
+        for i, (item_id, asset_id, href, qml) in enumerate(self.data):
+            if self.isCanceled():
+                return False
+            raster_layer = QgsRasterLayer(f"/vsicurl/{href}", baseName=asset_id)
+            if not raster_layer.isValid():
+                self.failed.append(asset_id)
+            else:
+                if qml is not None:
+                    try:
+                        doc = QDomDocument()
+                        doc.setContent(urlopen(qml, timeout=30).read())
+                        raster_layer.importNamedStyle(doc)
+                    except Exception:
+                        pass
+                self.prepared.append((item_id, asset_id, raster_layer))
+            self.setProgress((i + 1) * 100 / total)
+        return True
+
+    def finished(self, result: bool) -> None:
+        self.result.emit({
+            'collection_name': self.collection_name,
+            'layers': self.prepared,
+            'failed': self.failed,
+        })

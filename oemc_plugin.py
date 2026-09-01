@@ -37,14 +37,12 @@ sys.path.insert(0, str(Path(__file__).parents[0]) + '/src')  # prefer bundled li
 
 from .cache import Database
 
-from .threads import CatalogThread, ItemThread, MetadataThread
+from .threads import CatalogThread, ItemThread, MetadataThread, RegisterLayersTask
 
 #importing the QT libs to control ui
-from qgis.core import QgsProject, QgsApplication, QgsRasterLayer
+from qgis.core import QgsProject, QgsApplication
 from qgis.PyQt.QtCore import Qt
-from qgis.PyQt.QtXml import QDomDocument
 from qgis.PyQt.QtWidgets import QListWidget
-from urllib.request import urlopen
 
 
 class OemcStac:
@@ -90,6 +88,7 @@ class OemcStac:
             OEMC = "https://s3.eu-central-1.wasabisys.com/stac/oemc/catalog.json"
         )
         self.task_manager = QgsApplication.taskManager()
+        self.registering = False
 
     # noinspection PyMethodMayBeStatic
     def tr(self, message):
@@ -377,40 +376,45 @@ class OemcStac:
         self.dlg.addLayers.setEnabled(True)
 
     def register_dataset(self):
+        if self.registering:
+            return
         data = self.database.get_data_from_asset(self.current_items(), self.current_assets())
-        collection_name = self.current_collection_name()
+        if not data:
+            return
+        self.registering = True
+        self._block_button()
+        task = RegisterLayersTask(self.current_collection_name(), data)
+        self.task_manager.addTask(task)
+        task.result.connect(self.registering_thread_layers)
+
+    def registering_thread_layers(self, args):
+        self.registering = False
+        self.dlg.addLayers.setEnabled(True)
+
+        collection_name = args['collection_name']
         collection_tree = QgsProject.instance().layerTreeRoot().findGroup(collection_name)
         if collection_tree is None:
             collection_tree = QgsProject.instance().layerTreeRoot().addGroup(collection_name)
-        for d in data:
-            item_tree = collection_tree.findGroup(d[0])
+
+        for item_id, asset_id, raster_layer in args['layers']:
+            item_tree = collection_tree.findGroup(item_id)
             if item_tree is None:
-                item_tree = collection_tree.addGroup(d[0])
-            raster_layer = QgsRasterLayer(f"/vsicurl/{d[2]}", baseName=d[1])
-            if not raster_layer.isValid():
-                self.iface.messageBar().pushWarning(
-                    self.tr('OEMC Plugin'), self.tr(f'Could not load {d[1]}: {raster_layer.error().message()}'))
-                continue
-            if d[3] is not None:
-                try:
-                    doc = QDomDocument()
-                    doc.setContent(urlopen(d[3]).read())
-                    raster_layer.importNamedStyle(doc)
-                except Exception as e:
-                    self.iface.messageBar().pushWarning(
-                        self.tr('OEMC Plugin'), self.tr(f'Could not apply style to {d[1]}: {e}'))
-            if d[1] not in [i.name() for i in item_tree.findLayers()]:
+                item_tree = collection_tree.addGroup(item_id)
+            if asset_id not in [i.name() for i in item_tree.findLayers()]:
                 QgsProject.instance().addMapLayer(mapLayer=raster_layer, addToLegend=False)
                 item_tree.addLayer(raster_layer)
             item_tree.setExpanded(False)
             item_tree.setItemVisibilityChecked(False)
+
         collection_tree.setExpanded(False)
-        collection_groups = QgsProject.instance().layerTreeRoot().findGroups()
-        if len(collection_groups) == 1:
-            collection_groups[0].findGroups()[0].setItemVisibilityChecked(True)
-        else:
-            collection_index = [i.name() for i in collection_groups].index(self.current_collection_name())
-            QgsProject.instance().layerTreeRoot().findGroups()[collection_index].findGroups()[0].setItemVisibilityChecked(True)
+        item_groups = collection_tree.findGroups()
+        if item_groups:
+            item_groups[0].setItemVisibilityChecked(True)
+
+        if args['failed']:
+            self.iface.messageBar().pushWarning(
+                self.tr('OEMC Plugin'),
+                self.tr(f'Could not load {len(args["failed"])} layer(s): {", ".join(args["failed"])}'))
 
 # Qt5 documentation
 # https://doc.qt.io/qt-5/qtwidgets-module.html
