@@ -1,6 +1,6 @@
 from qgis.PyQt.QtCore import pyqtSignal
 from qgis.PyQt.QtXml import QDomDocument
-from qgis.core import QgsTask, QgsRasterLayer
+from qgis.core import QgsTask, QgsRasterLayer, QgsVectorLayer
 
 from urllib.request import urlopen
 from pystac_client.client import Client
@@ -154,18 +154,22 @@ class RegisterLayersTask(QgsTask):
         for i, (item_id, asset_id, href, qml) in enumerate(self.data):
             if self.isCanceled():
                 return False
-            raster_layer = QgsRasterLayer(f"/vsicurl/{href}", baseName=asset_id)
-            if not raster_layer.isValid():
+            path = href.split('?')[0]
+            if path.lower().endswith(('.tif', '.tiff')):
+                layer = QgsRasterLayer(f"/vsicurl/{href}", baseName=asset_id)
+            else:
+                layer = QgsVectorLayer(f"/vsicurl/{href}", asset_id, 'ogr')
+            if not layer.isValid():
                 self.failed.append(asset_id)
             else:
-                if qml is not None:
+                if qml is not None and isinstance(layer, QgsRasterLayer):
                     try:
                         doc = QDomDocument()
                         doc.setContent(urlopen(qml, timeout=30).read())
-                        raster_layer.importNamedStyle(doc)
+                        layer.importNamedStyle(doc)
                     except Exception:
                         pass
-                self.prepared.append((item_id, asset_id, raster_layer))
+                self.prepared.append((item_id, asset_id, layer))
             self.setProgress((i + 1) * 100 / total)
         return True
 
