@@ -81,12 +81,12 @@ class OemcStac:
         self.first_start = None
 
         # catalog names and urls exposed by the plugin
-        self.oemc_stacs = dict(
-            OpenLandMap = "https://stac.opengeohub.org/v1/cat/openlandmap",
-            LandMetric = "https://stac.opengeohub.org/v1/cat/landmetric",
-            EcoDataCube = "https://stac.opengeohub.org/v1/cat/ecodatacube",
-            OEMC = "https://s3.eu-central-1.wasabisys.com/stac/oemc/catalog.json"
-        )
+        self.oemc_stacs = {
+            "OpenLandMap": "https://stac.opengeohub.org/v1/cat/openlandmap",
+            "LandMetric": "https://stac.opengeohub.org/v1/cat/landmetric",
+            "EcoDataCube": "https://stac.opengeohub.org/v1/cat/ecodatacube",
+            "OEMC (in-situ)": "https://s3.eu-central-1.wasabisys.com/stac/oemc/catalog.json"
+        }
         self.task_manager = QgsApplication.taskManager()
         self.registering = False
 
