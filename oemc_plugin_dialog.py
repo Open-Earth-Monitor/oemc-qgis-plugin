@@ -26,10 +26,19 @@ import os
 
 from qgis.PyQt import uic
 from qgis.PyQt import QtWidgets
+from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtGui import QPixmap
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'oemc_plugin_dialog_base.ui'))
+
+
+def _label(text):
+    label = QtWidgets.QLabel(str(text) if text else '—')
+    label.setWordWrap(True)
+    label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+    return label
 
 
 class OemcStacDialog(QtWidgets.QDialog, FORM_CLASS):
@@ -42,3 +51,35 @@ class OemcStacDialog(QtWidgets.QDialog, FORM_CLASS):
         # http://qt-project.org/doc/qt-4.8/designer-using-a-ui-file.html
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
+
+
+class MetadataDialog(QtWidgets.QDialog):
+    """Modal dialog showing the metadata of a selected collection."""
+
+    def __init__(self, metadata, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Collection metadata')
+        self.resize(500, 500)
+
+        layout = QtWidgets.QFormLayout(self)
+        layout.addRow('Title:', _label(metadata.get('title')))
+        layout.addRow('Contact name:', _label(metadata.get('contact_name')))
+        layout.addRow('Contact email:', _label(metadata.get('contact_email')))
+
+        bbox = metadata.get('bbox') or []
+        extent = ' → '.join(str(v) for v in bbox) if len(bbox) == 4 else ''
+        layout.addRow('Extent:', _label(extent))
+
+        temporal = metadata.get('temporal') or []
+        temporal_text = ' → '.join(str(v) for v in temporal) if temporal else ''
+        layout.addRow('Temporal:', _label(temporal_text))
+
+        layout.addRow('Description:', _label(metadata.get('description')))
+
+        thumbnail = metadata.get('thumbnail')
+        if thumbnail:
+            pixmap = QPixmap()
+            pixmap.loadFromData(thumbnail)
+            thumb = QtWidgets.QLabel()
+            thumb.setPixmap(pixmap.scaledToWidth(400, Qt.SmoothTransformation))
+            layout.addRow('Thumbnail:', thumb)

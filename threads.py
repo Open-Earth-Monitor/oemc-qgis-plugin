@@ -1,6 +1,6 @@
+from qgis.PyQt.QtCore import pyqtSignal
 from qgis.PyQt.QtXml import QDomDocument
-from qgis.PyQt.QtCore import pyqtSignal, QRunnable
-from qgis.core import QgsTask, QgsRasterLayer, QgsProject
+from qgis.core import QgsTask, QgsRasterLayer, QgsVectorLayer
 
 from urllib.request import urlopen
 from pystac_client.client import Client
@@ -22,10 +22,7 @@ class CatalogThread(QgsTask):
 
     def run(self) -> bool:
         catalog = Client.open(self.url)
-        for i in catalog.links:
-            if i.rel == 'child':
-                self.data[i.title] = i.target.split('/')[1]
-                
+        self.data = {c.title or c.id: c.id for c in catalog.get_collections()}
         return True
     def finished(self, result: bool) -> None:
         if result:
@@ -33,118 +30,152 @@ class CatalogThread(QgsTask):
 
 class ItemThread(QgsTask):
     """
-        Accesses to the given catalog and collects the id of the items 
-        using given collection id
+        Accesses the given catalog and collects the items and their data
+        assets for the given collection id
 
         Inputs:
             url : url of the catalog
             collection_id: id of the selected collection
-
     """
-    result = pyqtSignal(list)
+    result = pyqtSignal(dict)
 
     def __init__(self, url, collection_id):
         super().__init__("Item event", QgsTask.CanCancel)
         self.url = url
         self.id = collection_id
-        self.item_ids = None
+        self.data = {'collection_id': collection_id, 'items': [], 'assets': []}
 
     def run(self) -> bool:
         catalog = Client.open(self.url)
-        items = catalog.get_collection(self.id).get_items()
-        self.item_ids = [item.id for item in items]
+        collection = next((c for c in catalog.get_collections() if c.id == self.id), None)
+        if collection is None:
+            return False
+        for item in collection.get_items():
+            self.data['items'].append(item.id)
+            assets = item.to_dict()['assets']
+            qml_href = self._qml_href(assets)
+            for asset_id, asset in assets.items():
+                if 'data' in (asset.get('roles') or []):
+                    self.data['assets'].append((item.id, asset_id, asset['href'], qml_href))
         return True
-    
-    def finished(self, result: bool) -> None:
-        if result:
-            self.result.emit(self.item_ids)
 
-class AssetThread(QgsTask):
-    """
-        Inputs:
-            url : url of the catalog
-            collection_id: id of the selected collection
-            item_ids: all items that is nested under the selected collection
-            selected_item_indexes: indexes of the selected items
-    """
-    result = pyqtSignal(list)
+    @staticmethod
+    def _qml_href(assets):
+        for asset in assets.values():
+            if 'style' in (asset.get('roles') or []) and \
+                    str(asset.get('type', '')).startswith('application/vnd.QGIS.qml'):
+                return asset['href']
+        return None
 
-    def __init__(self, url, collection_id, selected_items):
-        super().__init__("Asset event", QgsTask.CanCancel)
-        self.url = url
-        self.collection_id = collection_id
-        self.item_ids = selected_items
-        self.unique = []
-
-    def run(self) -> bool:
-        catalog = Client.open(self.url)
-        collection = catalog.get_collection(self.collection_id)
-
-        for item_id in self.item_ids:
-            assets = collection.get_item(item_id).to_dict()['assets']
-            for asset in assets.keys():
-                if not (
-                    asset.endswith('view') or
-                    asset.endswith('nail') or
-                    asset.endswith('sld') or
-                    asset.endswith('qml')
-                ):
-                    if asset not in self.unique:
-                        self.unique.append(asset)
-            return True
-
-    def finished(self, result: bool) -> None:
-        if result:
-            self.result.emit(self.unique)
-
-class HypertextThread(QgsTask):
-    result = pyqtSignal(list)
-    def __init__(self, url, collection_id, item_ids, asset_ids):
-        super().__init__("HyperText event", QgsTask.CanCancel)
-
-        self.url = url
-        self.collection_id = collection_id
-        self.item_ids = item_ids
-        self.asset_ids = asset_ids
-        self.data = []
-
-    def run(self) -> bool:
-        catalog = Client.open(self.url)
-        collection = catalog.get_collection(self.collection_id)
-        for item_id in self.item_ids:
-            assets = collection.get_item(item_id).to_dict()['assets']
-            try:
-                qml_file = assets['qml']['href']
-            except KeyError:
-                qml_file = None
-            for asset_id in self.asset_ids:
-                href = assets[asset_id]['href']
-                self.data.append((item_id, asset_id, href, qml_file))
-        return True
-    
     def finished(self, result: bool) -> None:
         if result:
             self.result.emit(self.data)
 
-class RegisterDataThread(QRunnable):
-    result = pyqtSignal()
 
-    def __init__(self, data, item_tree):
-        super().__init__()
+class MetadataThread(QgsTask):
+    """
+        Accesses the given catalog and collects the metadata of the selected
+        collection, including the thumbnail of its first item.
+
+        Inputs:
+            url : url of the catalog
+            collection_id: id of the selected collection
+    """
+    result = pyqtSignal(dict)
+
+    def __init__(self, url, collection_id):
+        super().__init__("Metadata event", QgsTask.CanCancel)
+        self.url = url
+        self.collection_id = collection_id
+        self.metadata = None
+
+    def run(self) -> bool:
+        catalog = Client.open(self.url)
+        collection = next((c for c in catalog.get_collections() if c.id == self.collection_id), None)
+        if collection is None:
+            return False
+
+        d = collection.to_dict()
+        extent = d.get('extent') or {}
+        bbox = (extent.get('spatial') or {}).get('bbox') or [[]]
+        temporal = (extent.get('temporal') or {}).get('interval') or [[None, None]]
+
+        self.metadata = {
+            'title': d.get('title') or d.get('id'),
+            'description': d.get('description'),
+            'contact_name': d.get('contact_name'),
+            'contact_email': d.get('contact_email'),
+            'bbox': bbox[0],
+            'temporal': temporal[0],
+            'thumbnail': self._thumbnail_bytes(collection),
+        }
+        return True
+
+    def _thumbnail_bytes(self, collection):
+        try:
+            first = next(iter(collection.get_items()), None)
+        except Exception:
+            return None
+        if first is None:
+            return None
+        for asset in first.to_dict().get('assets', {}).values():
+            if 'thumbnail' in (asset.get('roles') or []):
+                try:
+                    return urlopen(asset['href'], timeout=30).read()
+                except Exception:
+                    return None
+        return None
+
+    def finished(self, result: bool) -> None:
+        if result and self.metadata is not None:
+            self.result.emit(self.metadata)
+
+
+class RegisterLayersTask(QgsTask):
+    """
+        Prepares raster layers off the main thread and emits them so the
+        plugin can register them in the project without freezing the UI.
+
+        Inputs:
+            collection_name: name of the selected collection
+            data: list of tuples (item_id, asset_id, href, qml_href)
+    """
+    result = pyqtSignal(dict)
+
+    def __init__(self, collection_name, data):
+        super().__init__("Add layers", QgsTask.CanCancel)
+        self.collection_name = collection_name
         self.data = data
-        self.item_tree = item_tree
+        self.prepared = []
+        self.failed = []
 
-    def run(self):
-        data_path = f"/vsicurl/{self.data[2]}"
-        raster_layer = QgsRasterLayer(data_path, baseName=self.data[1])
-        if self.data[1] not in [i.name() for i in self.item_tree.findLayers()]:
-            if self.data[3] is not None:
-                doc = QDomDocument()
-                doc.setContent(urlopen(self.data[3]).read())
-                raster_layer.importNamedStyle(doc)
-            QgsProject.instance().addMapLayer(mapLayer=raster_layer, addToLegend=False)
-            self.item_tree.addLayer(raster_layer)
+    def run(self) -> bool:
+        total = len(self.data)
+        for i, (item_id, asset_id, href, qml) in enumerate(self.data):
+            if self.isCanceled():
+                return False
+            path = href.split('?')[0]
+            if path.lower().endswith(('.tif', '.tiff')):
+                layer = QgsRasterLayer(f"/vsicurl/{href}", baseName=asset_id)
+            else:
+                layer = QgsVectorLayer(f"/vsicurl/{href}", asset_id, 'ogr')
+            if not layer.isValid():
+                self.failed.append(asset_id)
+            else:
+                if qml is not None and isinstance(layer, QgsRasterLayer):
+                    try:
+                        doc = QDomDocument()
+                        doc.setContent(urlopen(qml, timeout=30).read())
+                        layer.importNamedStyle(doc)
+                    except Exception:
+                        pass
+                self.prepared.append((item_id, asset_id, layer))
+            self.setProgress((i + 1) * 100 / total)
+        return True
 
-    def finished(self, result):
-        if result:
-            self.result.emit()
+    def finished(self, result: bool) -> None:
+        self.result.emit({
+            'collection_name': self.collection_name,
+            'layers': self.prepared,
+            'failed': self.failed,
+        })

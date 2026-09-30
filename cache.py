@@ -2,6 +2,8 @@ import sqlite3
 import os
 from typing import List
 
+SCHEMA_VERSION = 1
+
 class Database:
     """
         class to maintain and interact with db
@@ -12,30 +14,27 @@ class Database:
             
     def _get_connection(self, catalog_name) -> tuple:
         """
-        Establishes a connection to the local database if it exists; 
-        if not, will create one and return the connection of the created database.
-        
-        Args:
-            catalog_name (str): Catalog name
-        Returns: 
-            (sqlite object): connetion to sql db
+        Establishes a connection to the local database, recreating it when the
+        cached schema version does not match the current one.
         """
-        # check is there is a file called `db`
         plugin_dir = os.path.dirname(__file__)
-        
+
         if not os.path.isdir(f'{plugin_dir}/db'):
             os.mkdir(f'{plugin_dir}/db')
         db_path = f"{plugin_dir}/db/{catalog_name}.db"
-        
-        # check if exist folder called `catalog_name`
-        if not os.path.isfile(db_path):
-            connection = sqlite3.connect(db_path)
-            self._create_db(connection=connection)
-            
-        else:
-            connection = sqlite3.connect(db_path)
+
+        connection = sqlite3.connect(db_path)
+        if connection.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION:
+            connection.execute("DROP TABLE IF EXISTS collection")
+            connection.execute("DROP TABLE IF EXISTS item")
+            connection.execute("DROP TABLE IF EXISTS asset")
+            self._create_db(connection)
 
         return connection
+
+    def close(self) -> None:
+        """Closes the underlying connection."""
+        self.connection.close()
 
     def _create_db(self, connection) -> None:
         """
@@ -49,7 +48,9 @@ class Database:
         self.cursor = connection.cursor()
         self.cursor.execute("CREATE TABLE collection(id INTEGER PRIMARY KEY,objectId UNIQUE, title TEXT)") # , description TEXT
         self.cursor.execute("CREATE TABLE item(id INTEGER PRIMARY KEY, objectId UNIQUE, collection_objectId TEXT)")
-        self.cursor.execute("CREATE TABLE asset(id INTEGER PRIMARY KEY, objectId TEXT, item_objectId TEXT, href TEXT, qml TEXT, UNIQUE(objectId, item_objectId))")        
+        self.cursor.execute("CREATE TABLE asset(id INTEGER PRIMARY KEY, objectId TEXT, item_objectId TEXT, href TEXT, qml TEXT, UNIQUE(objectId, item_objectId))")
+        connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        connection.commit()
     
     def insert_collection(self, index, title) -> None:
         """
@@ -148,7 +149,22 @@ class Database:
             Returns:
                 list of the asset id
         """
+        if not item_id:
+            return []
         return [i[0] for i in self.cursor.execute(f"SELECT DISTINCT objectId FROM asset WHERE item_objectId IN ({','.join(['?'] * len(item_id))})", item_id).fetchall()]
+
+    def get_asset_by_collection_id(self, collection_id) -> List[str]:
+        """
+            Gets the asset ids cached for all items of the given collection
+
+            Args:
+                collection_id (str): collection id
+            Returns:
+                list of the asset ids cached under the given collection
+        """
+        return [i[0] for i in self.cursor.execute(
+            "SELECT DISTINCT a.objectId FROM asset a JOIN item i ON a.item_objectId = i.objectId WHERE i.collection_objectId = ?",
+            (collection_id,)).fetchall()]
 
     def get_data_from_asset(self, items, assets):
         """
@@ -160,6 +176,8 @@ class Database:
             Returns:
                 list(tuple) : tuples stores item_id, asset_id href of data and qml of relevant data
         """
+        if not items or not assets:
+            return []
         query = f"""
             SELECT item_objectId, objectId, href, qml
             FROM asset

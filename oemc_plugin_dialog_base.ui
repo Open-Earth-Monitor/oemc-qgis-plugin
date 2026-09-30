@@ -28,7 +28,7 @@
         </size>
        </property>
        <property name="text">
-        <string>OEMC Catalog:</string>
+        <string>Catalog:</string>
        </property>
       </widget>
      </item>
@@ -94,6 +94,19 @@
      </property>
      <property name="orientation">
       <enum>Qt::Horizontal</enum>
+     </property>
+    </widget>
+   </item>
+   <item row="6" column="0">
+    <widget class="QPushButton" name="showMetadata">
+     <property name="minimumSize">
+      <size>
+       <width>100</width>
+       <height>0</height>
+      </size>
+     </property>
+     <property name="text">
+      <string>Show Metadata</string>
      </property>
     </widget>
    </item>

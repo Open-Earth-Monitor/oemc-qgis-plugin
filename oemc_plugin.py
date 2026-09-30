@@ -28,23 +28,19 @@ from qgis.PyQt.QtWidgets import QAction
 # Initialize Qt resources from file resources.py
 from .resources import *
 # Import the code for the dialog
-from .oemc_plugin_dialog import OemcStacDialog
-import os.path
+from .oemc_plugin_dialog import OemcStacDialog, MetadataDialog
 import os
-
-from pathlib import Path
 import sys
-import os 
-sys.path.append(str(Path(__file__).parents[0])+'/src') # findable lib path
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parents[0]) + '/src')  # prefer bundled libs over user-site packages
 
 from .cache import Database
 
-from .threads import CatalogThread, ItemThread, AssetThread, HypertextThread, RegisterDataThread
+from .threads import CatalogThread, ItemThread, MetadataThread, RegisterLayersTask
 
 #importing the QT libs to control ui
 from qgis.core import QgsProject, QgsApplication
-from qgis.PyQt.QtCore import Qt, QThreadPool
-
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import QListWidget
 
@@ -84,16 +80,15 @@ class OemcStac:
         # Must be set in initGui() to survive plugin reloads
         self.first_start = None
 
-        ############################################
-        # tapping on the project structure to use it
-        self.project_tree = QgsProject.instance().layerTreeRoot() # QgsLayerTree()
-        # saving the stac names and catalog urls as a variable
-        self.main_url = None
-        self.oemc_stacs = dict(
-            OpenLandMap = "https://s3.eu-central-1.wasabisys.com/stac/openlandmap/catalog.json",
-            EcoDataCube = "https://s3.eu-central-1.wasabisys.com/stac/odse/catalog.json"
-        )
+        # catalog names and urls exposed by the plugin
+        self.oemc_stacs = {
+            "OpenLandMap": "https://stac.opengeohub.org/v1/cat/openlandmap",
+            "LandMetric": "https://stac.opengeohub.org/v1/cat/landmetric",
+            "EcoDataCube": "https://stac.opengeohub.org/v1/cat/ecodatacube",
+            "OEMC (in-situ)": "https://s3.eu-central-1.wasabisys.com/stac/oemc/catalog.json"
+        }
         self.task_manager = QgsApplication.taskManager()
+        self.registering = False
 
     # noinspection PyMethodMayBeStatic
     def tr(self, message):
@@ -216,10 +211,6 @@ class OemcStac:
             self.dlg = OemcStacDialog()
 
             # creating some variable to handle the state of the plugin
-            
-            
-            self.thread_pool = QThreadPool().globalInstance()
-            self.thread_pool.setMaxThreadCount(int(self.thread_pool.maxThreadCount()/2))
 
             # defining settings for the ui elements on the start
             self.dlg.listCatalog.view().setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
@@ -233,34 +224,18 @@ class OemcStac:
             self.dlg.clearCache.setEnabled(False)
             self.dlg.searchBox.setEnabled(False)
 
-        # functionalities
-        # change on the selection of the catalog will update the
-        # listCatalog and fills it with the collection names
-        self.dlg.listCatalog.currentIndexChanged.connect(self.catalog_task_handler)
-        # based on the selection from collections this will trigered
-        # following the selection this will fills the listItems
-        # self.dlg.listCollection.itemClicked.connect(self.taskhandler_items)
-        self.dlg.listCollection.itemClicked.connect(self.item_task_handler)
-        # this will fills the listAssets with unique assets
-        self.dlg.listItems.itemClicked.connect(self.asset_task_handler)
-        # this will set selected variable for seleceted assets
-        self.dlg.listAssets.itemClicked.connect(self.selecting_assets)
-        # this will fills the strategies wit predefined add layer strategies
-        # self.dlg.addStrategy.addItems(self.strategies)
-        # finally some one is going to push the addLayers button
+            # wire ui signals once, so they do not stack on repeated runs
+            self.dlg.listCatalog.currentIndexChanged.connect(self.catalog_task_handler)
+            self.dlg.listCollection.itemClicked.connect(self.item_task_handler)
+            self.dlg.listItems.itemClicked.connect(self.asset_task_handler)
+            self.dlg.listAssets.itemClicked.connect(self.selecting_assets)
+            self.dlg.addLayers.clicked.connect(self.register_dataset)
+            self.dlg.showMetadata.clicked.connect(self.metadata_handler)
+            self.dlg.clearCache.clicked.connect(self.handle_cache)
+            self.dlg.searchBox.textChanged.connect(self.handle_search)
 
-        self.dlg.addLayers.clicked.connect(self.register_dataset)
-        self.dlg.clearCache.clicked.connect(self.handle_cache)
-        self.dlg.searchBox.textChanged.connect(self.handle_search)
         # show the dialog
         self.dlg.show()
-        # Run the dialog event loop
-        # result = self.dlg.exec_()
-        # See if OK was pressed
-        # if result:
-        #     # Do something useful here - delete the line containing pass and
-        #     # substitute with your code.
-        #     pass
 
     def _clear_ui(self, params:list) -> None:
         if ('all' in params ) or ('item' in params):
@@ -273,6 +248,8 @@ class OemcStac:
             self.dlg.listCollection.clear()
 
     def handle_cache(self):
+        if hasattr(self, 'database'):
+            self.database.close()
         db_file = f"{os.path.dirname(__file__)}/db/{self.dlg.listCatalog.currentText()}.db"
         if os.path.isfile(db_file):
             os.remove(db_file)
@@ -335,63 +312,62 @@ class OemcStac:
             return self.oemc_stacs[name]
 
     def current_collection_id(self):
-        return self.database.get_collection_by_title(self.dlg.listCollection.currentItem().text())
+        item = self.dlg.listCollection.currentItem()
+        if item is None:
+            return None
+        return self.database.get_collection_by_title(item.text())
 
     def current_collection_name(self):
         return self.dlg.listCollection.currentItem().text()
+
+    def metadata_handler(self):
+        collection_id = self.current_collection_id()
+        if collection_id is None:
+            self.iface.messageBar().pushWarning(
+                self.tr('OEMC Plugin'), self.tr('Select a collection first.'))
+            return
+        thread = MetadataThread(self.current_url(), collection_id)
+        self.task_manager.addTask(thread)
+        thread.result.connect(self.show_metadata_dialog)
+
+    def show_metadata_dialog(self, metadata):
+        dialog = MetadataDialog(metadata, parent=self.dlg)
+        dialog.exec_()
     
-    def item_task_handler(self, _):
+    def item_task_handler(self, item):
         # clean the ui and block the button
         self._clear_ui(['item','asset'])
         self._block_button()
 
-        items_cache = self.database.get_item_by_collection_id(self.current_collection_id())
-        if items_cache != []:
+        collection_id = self.database.get_collection_by_title(item.text())
+        items_cache = self.database.get_item_by_collection_id(collection_id)
+        assets_cache = self.database.get_asset_by_collection_id(collection_id)
+        if items_cache != [] and assets_cache != []:
             self.dlg.listItems.addItems(items_cache)
         else:
-            item_thread = ItemThread(self.current_url(), self.current_collection_id())
+            item_thread = ItemThread(self.current_url(), collection_id)
             self.task_manager.addTask(item_thread)
             item_thread.result.connect(self.listing_thread_items)
 
     def listing_thread_items(self, args):
-        self.dlg.listItems.addItems(args)
-        self.database.insert_items(args, self.current_collection_id())
+        # ignore results from a collection that is no longer selected
+        if args['collection_id'] != self.current_collection_id():
+            return
+        self.dlg.listItems.addItems(args['items'])
+        self.database.insert_items(args['items'], args['collection_id'])
+        self.database.insert_assets(args['assets'])
 
     def current_items(self):
         return [i.text() for i in self.dlg.listItems.selectedItems()]
-
-    def all_items(self):
-        return [self.dlg.listItems.item(i).text() for i in range(self.dlg.listItems.count())]
         
     def asset_task_handler(self,_):
         # clean the ui and block the button
         self._clear_ui(['asset'])
         self._block_button()
 
-        asset_cache = self.database.get_asset_by_item_id(self.current_items())
-        if asset_cache != []:
-            self.dlg.listAssets.addItems(asset_cache)
-        else:
-            asset_thread = AssetThread(
-                self.current_url(),
-                self.current_collection_id(),
-                self.all_items()
-            )
-            self.task_manager.addTask(asset_thread)
-            asset_thread.result.connect(self.listing_thread_asset)
-
-    def listing_thread_asset(self, args):
-        self._clear_ui(['asset'])
-        self.dlg.listAssets.addItems(sorted(list(set(args))))
-        hypertext_thread = HypertextThread(
-            self.current_url(),
-            self.current_collection_id(),
-            self.all_items(),
-            args
+        self.dlg.listAssets.addItems(
+            sorted(set(self.database.get_asset_by_item_id(self.current_items())))
         )
-        self.task_manager.addTask(hypertext_thread)
-        hypertext_thread.result.connect(self.database.insert_assets)
-
 
     def current_assets(self):
         return [i.text() for i in self.dlg.listAssets.selectedItems()]
@@ -400,26 +376,45 @@ class OemcStac:
         self.dlg.addLayers.setEnabled(True)
 
     def register_dataset(self):
+        if self.registering:
+            return
         data = self.database.get_data_from_asset(self.current_items(), self.current_assets())
-        collection_name = self.current_collection_name()
+        if not data:
+            return
+        self.registering = True
+        self._block_button()
+        task = RegisterLayersTask(self.current_collection_name(), data)
+        self.task_manager.addTask(task)
+        task.result.connect(self.registering_thread_layers)
+
+    def registering_thread_layers(self, args):
+        self.registering = False
+        self.dlg.addLayers.setEnabled(True)
+
+        collection_name = args['collection_name']
         collection_tree = QgsProject.instance().layerTreeRoot().findGroup(collection_name)
         if collection_tree is None:
             collection_tree = QgsProject.instance().layerTreeRoot().addGroup(collection_name)
-        for i, d in enumerate(data):
-            item_tree = collection_tree.findGroup(d[0])
+
+        for item_id, asset_id, raster_layer in args['layers']:
+            item_tree = collection_tree.findGroup(item_id)
             if item_tree is None:
-                item_tree = collection_tree.addGroup(d[0])
-            data_registerer = RegisterDataThread(d, item_tree)
-            self.thread_pool.start(data_registerer)
+                item_tree = collection_tree.addGroup(item_id)
+            if asset_id not in [i.name() for i in item_tree.findLayers()]:
+                QgsProject.instance().addMapLayer(mapLayer=raster_layer, addToLegend=False)
+                item_tree.addLayer(raster_layer)
             item_tree.setExpanded(False)
             item_tree.setItemVisibilityChecked(False)
+
         collection_tree.setExpanded(False)
-        collection_groups = QgsProject.instance().layerTreeRoot().findGroups()
-        if len(collection_groups) == 1:
-            collection_groups[0].findGroups()[0].setItemVisibilityChecked(True)
-        else:
-            collection_index = [i.name() for i in collection_groups].index(self.current_collection_name())
-            QgsProject.instance().layerTreeRoot().findGroups()[collection_index].findGroups()[0].setItemVisibilityChecked(True)
+        item_groups = collection_tree.findGroups()
+        if item_groups:
+            item_groups[0].setItemVisibilityChecked(True)
+
+        if args['failed']:
+            self.iface.messageBar().pushWarning(
+                self.tr('OEMC Plugin'),
+                self.tr(f'Could not load {len(args["failed"])} layer(s): {", ".join(args["failed"])}'))
 
 # Qt5 documentation
 # https://doc.qt.io/qt-5/qtwidgets-module.html
