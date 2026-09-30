@@ -2,7 +2,21 @@
 
 ## Overview
 
-**OEMC QGIS plugin** is built to provide easy and straightforward access to OEMC spatial layers, the project is developing a QGIS plugin to allow different users communities to conduct integrated and customized analysis in a open source environment.
+**OEMC QGIS plugin** gives easy access to OEMC STAC catalogs from inside QGIS. Browse a catalog, select a collection and its items, preview collection metadata and add layers to the map.
+
+The plugin targets two kinds of analysis-ready data:
+
+- Wall-to-wall raster mosaics served as Cloud Optimized GeoTIFF (COG) or VRT files with overview files (ovr)
+- Analysis-ready in-situ data (ARIS Data) in vector format readable by GDAL/OGR
+
+Tiled raster data is not supported and will not display correctly. Catalogs that publish tiled assets, for example the [Microsoft Planetary Computer](https://planetarycomputer.microsoft.com/docs/quickstarts/reading-stac/), are out of scope.
+
+## Supported STAC catalogs
+
+- OpenLandMap: https://stac.opengeohub.org/v1/cat/openlandmap
+- LandMetric: https://stac.opengeohub.org/v1/cat/landmetric
+- EcoDataCube: https://stac.opengeohub.org/v1/cat/ecodatacube
+- OEMC (in-situ): https://s3.eu-central-1.wasabisys.com/stac/oemc/catalog.json
 
 ## Installation
 
