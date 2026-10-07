@@ -8,11 +8,11 @@
 name=Oemc Plugin
 qgisMinimumVersion=3.16
 description=This plugin provides easy access to OEMC STAC catalog
-version=0.2
+version=0.3
 author=OpenGeoHub
 email=murat.sahin@opengeohub.org
 
-about=This plugin aims to provide straightforward access to OEMC STAC catalog spatial layers to allow different user communities to conduct integrated and customized analysis in an open-source environment.
+about=This plugin aims to provide straightforward access to OEMC and others STAC services, allowing access to several spatial layers for different user communities to conduct integrated and customized analysis in an open-source environment.
 
 tracker=https://github.com/Open-Earth-Monitor/oemc-qgis-plugin/issues
 repository=https://github.com/Open-Earth-Monitor/oemc-qgis-plugin
